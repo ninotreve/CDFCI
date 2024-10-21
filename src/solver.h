@@ -67,7 +67,7 @@ class CoordinateUpdate
 {
     public:
 
-    virtual double operator () (Hamiltonian<N>& h, WaveFunction<N>& xz, 
+    virtual double operator () (Hamiltonian<N>& h, WaveFunction<N>& xz,
         typename WaveFunctionVector<N>::value_type& det_picked, DeterminantDecoded<N>& det_decoded) const = 0;
 
     virtual ~CoordinateUpdate() {};
@@ -80,7 +80,7 @@ class CoordinateUpdateLS : public CoordinateUpdate<N>
 
     ~CoordinateUpdateLS() {};
 
-    double operator () (Hamiltonian<N>& h, WaveFunction<N>& xz, 
+    double operator () (Hamiltonian<N>& h, WaveFunction<N>& xz,
         typename WaveFunctionVector<N>::value_type& det_picked, DeterminantDecoded<N>& det_decoded) const
     {
         double dx = 0;
@@ -120,7 +120,7 @@ class CoordinateUpdateLS : public CoordinateUpdate<N>
             {
                 rt = 2 * sqrt(-p3) * cos(atan2(qrtd, -q2)/3.0);
             }
-            
+
         }
 
         dx = rt - x;
@@ -170,7 +170,9 @@ class CDFCI : public Solver
         {"ref_det_occ", Option::array()},
         {"z_threshold", 0.0},
         {"z_threshold_search", false},
-        {"max_wavefunction_size", 1000000}
+        {"max_wavefunction_size", 1000000},
+        {"save_configuration", false},
+        {"save_configuration_location", "./wavefunction.out"}
     };
 
     CDFCI() {};
@@ -331,7 +333,7 @@ class CDFCI : public Solver
         std::cout << std::endl;
         std::cout << "Hartree Fock energy: " << std::fixed << std::setprecision(10) << \
              h.get_diagonal(hf_decoded) << std::endl << std::endl;
-        
+
         while (true)
         {
             // Initialize xz
@@ -355,9 +357,12 @@ class CDFCI : public Solver
             }
             else
             {
+                if (option["save_configuration"]) {
+                    ierr = xz.dump_wavefunction(option["save_configuration_location"]);
+                }
                 return ierr;
             }
-            
+
         }
     }
 

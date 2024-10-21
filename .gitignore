@@ -1,2 +1,4 @@
 .vscode/*
 *.exe
+cdfci
+cdfci_omp

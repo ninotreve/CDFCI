@@ -19,6 +19,7 @@
 
 #include <unordered_map>
 #include <cmath>
+#include <fstream>
 #include "lib/libcuckoo/cuckoohash_map.hh"
 #include "lib/robin_hood/robin_hood.h"
 #include "determinant.h"
@@ -122,13 +123,14 @@ class WaveFunction
     }
 
     virtual void update_x(key_type& key, double dx) {};
-    virtual void update_z_and_get_sub(std::vector<std::pair<key_type, double>>& column, 
+    virtual void update_z_and_get_sub(std::vector<std::pair<key_type, double>>& column,
         double dx, WaveFunctionVector<N>& sub_xz, double z_threshold) {};
-    virtual void update_z_only(std::vector<std::pair<key_type, double>>& column, 
+    virtual void update_z_only(std::vector<std::pair<key_type, double>>& column,
         double dx, WaveFunctionVector<N>& sub_xz, double z_threshold) = 0;
     virtual size_t size() = 0;
     virtual size_t update_size(size_t n_new_element) {return 0;}
     virtual void reinsert_z(key_type& key, double new_z) {};
+    virtual int dump_wavefunction(const std::string& path) {return 0;};
 
     virtual ~WaveFunction() {};
 };
@@ -237,7 +239,7 @@ class WaveFunctionStd : public WaveFunction<N>
         return;
     }
 
-    void update_z_only(std::vector<std::pair<key_type, double>>& column, 
+    void update_z_only(std::vector<std::pair<key_type, double>>& column,
         double dx, WaveFunctionVector<N>& sub_xz, double z_threshold = 0.0)
     {
         // Used to recalculate z_i exactly. Assume the first entry of column is the one to be updated.
@@ -280,29 +282,71 @@ class WaveFunctionStd : public WaveFunction<N>
         // Update z_i. Assume column[0] is the coordinate updated.
         auto iter = data_.find(column[0].first);
         iter->second[1] = new_z;
-        
+
         return;
     }
 
-    void update_z_and_get_sub(std::vector<std::pair<key_type, double>>& column, 
+    void update_z_and_get_sub(std::vector<std::pair<key_type, double>>& column,
         double dx, WaveFunctionVector<N>& sub_xz, double z_threshold = 0.0)
     {
         // Clear sub_xz
         sub_xz.clear();
-        
+
         update_z_only(column, dx, sub_xz, z_threshold);
 
         // Update dot product. (atomic update)
         dot_product_ += sub_xz.dot_product_;
         // Update sub_xz
         sub_xz.set_xx(norm_square_[0]);
-        sub_xz.set_xz(dot_product_); 
+        sub_xz.set_xz(dot_product_);
         return;
     }
 
     size_t size()
     {
         return data_.size();
+    }
+
+    int dump_wavefunction(const std::string& path)
+    {
+        // Step 1: Open the file
+        std::ofstream outfile(path, std::ios::out | std::ios::binary);
+        if (!outfile.is_open()) {
+            std::cerr << "Error: Unable to open file at " << path << std::endl;
+            return -2; // Return error code for file opening failure
+        }
+
+        // Step 2: Write wavefunction data to the file
+        try {
+            long int total = 0;
+            for (const auto& iter : data_)
+            {
+                total ++;
+                if (iter.second[0] == 0.0)
+                    continue;
+                for (const auto& orb : iter.first.get_occupied_orbitals())
+                {
+                    outfile << orb << " ";
+                }
+                outfile << " : " << std::setprecision(15) << iter.second[0] << "\n";
+            }
+            outfile << "total = " << total << std::endl;
+            outfile << "energy = " << std::setprecision(15) << this->get_variational_energy() << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "Exception: " << e.what() << std::endl;
+            return -3; // Return error code for exception
+        }
+
+        // Step 3: Close the file
+        outfile.close();
+
+        // Check if the file was closed properly
+        if (outfile.fail()) {
+            std::cerr << "Error: File could not be closed properly" << std::endl;
+            return -4; // Return error code for closing failure
+        }
+
+        return 0; // Success
     }
 };
 
@@ -315,7 +359,7 @@ class WaveFunctionCuckoo : public WaveFunction<N>
     using WaveFunction<N>::norm_square_;
     using WaveFunction<N>::dot_product_;
     using WaveFunction<N>::max_size;
-    
+
     private:
 
     cuckoohash_map<key_type, value_type, DeterminantHashRobinhood<N>, DeterminantEqual<N>,\
@@ -345,7 +389,7 @@ class WaveFunctionCuckoo : public WaveFunction<N>
         return;
     }
 
-    void update_z_only(std::vector<std::pair<key_type, double>>& column, 
+    void update_z_only(std::vector<std::pair<key_type, double>>& column,
 		       double dx, WaveFunctionVector<N>& sub_xz, double z_threshold = 0.0)
     {
         // Recalculate z_i
@@ -403,18 +447,18 @@ class WaveFunctionCuckoo : public WaveFunction<N>
         return;
     }
 
-    void update_z_and_get_sub(std::vector<std::pair<key_type, double>>& column, 
+    void update_z_and_get_sub(std::vector<std::pair<key_type, double>>& column,
 			      double dx, WaveFunctionVector<N>& sub_xz, double z_threshold = 0.0)
     {
         // Clear sub_xz
         sub_xz.clear();
 
         update_z_only(column, dx, sub_xz, z_threshold);
-        
+
         dot_product_ += sub_xz.dot_product_;
         // Update sub_xz
         sub_xz.set_xx(norm_square_[0]);
-        sub_xz.set_xz(dot_product_); 
+        sub_xz.set_xz(dot_product_);
         return;
     }
 
@@ -440,6 +484,49 @@ class WaveFunctionCuckoo : public WaveFunction<N>
     {
         size_ += n_new_element;
         return size_;
+    }
+
+    int dump_wavefunction(const std::string& path)
+    {
+        // Step 1: Open the file
+        std::ofstream outfile(path, std::ios::out | std::ios::binary);
+        if (!outfile.is_open()) {
+            std::cerr << "Error: Unable to open file at " << path << std::endl;
+            return -2; // Return error code for file opening failure
+        }
+
+        // Step 2: Write wavefunction data to the file
+        try {
+            long int total = 0;
+            auto lt = data_.lock_table();
+            for (const auto& iter : lt)
+            {
+                total ++;
+                if (iter.second[0] == 0.0)
+                    continue;
+                for (auto orb : iter.first.get_occupied_orbitals())
+                {
+                    outfile << orb << " ";
+                }
+                outfile << " : " << std::setprecision(15) << iter.second[0] << "\n";
+            }
+            outfile << "total = " << total << std::endl;
+            outfile << "energy = " << std::setprecision(15) << this->get_variational_energy() << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "Exception: " << e.what() << std::endl;
+            return -3; // Return error code for exception
+        }
+
+        // Step 3: Close the file
+        outfile.close();
+
+        // Check if the file was closed properly
+        if (outfile.fail()) {
+            std::cerr << "Error: File could not be closed properly" << std::endl;
+            return -4; // Return error code for closing failure
+        }
+
+        return 0; // Success
     }
 };
 
