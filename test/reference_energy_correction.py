@@ -1,5 +1,6 @@
 """Optional independent PySCF FCI reference for a benchmark FCIDUMP."""
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -7,7 +8,7 @@ import pyscf
 from pyscf import fci, lib
 from pyscf.tools import fcidump
 
-lib.num_threads(2)
+lib.num_threads(int(os.environ.get("PYSCF_NUM_THREADS", "2")))
 source, destination = map(Path, sys.argv[1:3])
 # PySCF's comma-joined parser rejects a line containing only '&FCI'.
 # Join that line to the following header line; preserve every integral.

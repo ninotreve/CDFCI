@@ -173,6 +173,14 @@ Example systems and expected energies are provided in `regression_tests`.
 
 The `examples/` and `papers/` directories contain all scripts and input files to reproduce published results. Requires Python and [PySCF](https://github.com/pyscf/pyscf) to generate FCIDUMP files.
 
+The companion perturbative energy-correction paper has a separate
+[one-click Slurm workflow](./experiments/energy_correction/README.md) covering
+all five experiments in its numerical-results plan:
+
+```bash
+sbatch experiments/energy_correction/run_all.sbatch
+```
+
 ---
 
 ## 👥 Developers

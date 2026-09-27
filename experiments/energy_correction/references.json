@@ -1,0 +1,41 @@
+{
+  "h2o_ccpvdz_psi4": {
+    "energy": -76.2418600697,
+    "source": "regression_tests/h2o/ccpvdz_psi4/output",
+    "method": "300000000-iteration CDFCI calculation",
+    "fcidump": "data/h2o_ccpvdz_psi4.FCIDUMP",
+    "note": "Regression-only H2O reference; not used by the default C2/N2 matrix."
+  },
+  "c2_ccpvdz_psi4": {
+    "energy": -75.7319603747,
+    "source": "regression_tests/c2/ccpvdz_psi4/output",
+    "method": "223400000-iteration CDFCI calculation",
+    "fcidump": "data/c2_ccpvdz_psi4.FCIDUMP",
+    "note": "Long-run regression energy used as the default accuracy reference."
+  },
+  "n2_ccpvdz_psi4": {
+    "energy": -109.2821730115,
+    "source": "regression_tests/n2/ccpvdz_psi4/output",
+    "method": "400000000-iteration CDFCI calculation",
+    "fcidump": "data/n2_ccpvdz_psi4.FCIDUMP",
+    "note": "Long-run regression energy used as the default accuracy reference."
+  },
+  "c2_ccpvdz_bm3": {
+    "energy": -75.7319595404627393,
+    "source": "/home/yjzhang/codes/cdfci/logs/c2n2-bm3.out",
+    "method": "800000 block-CDFCI iterations, 64 threads, 64 coordinates",
+    "fcidump": "data/c2_ccpvdz_psi4.FCIDUMP",
+    "z_threshold": 3e-08,
+    "max_wavefunction_size": 1696512081,
+    "note": "Finite-iteration endpoint retained for reproducibility, but not used as the accuracy reference because it contains the truncation error that the correction estimates."
+  },
+  "n2_ccpvdz_bm3": {
+    "energy": -109.2821721090930538,
+    "source": "/home/yjzhang/codes/cdfci/logs/c2n2-bm3.out",
+    "method": "2200000 block-CDFCI iterations, 64 threads, 64 coordinates",
+    "fcidump": "data/n2_ccpvdz_psi4.FCIDUMP",
+    "z_threshold": 5e-07,
+    "max_wavefunction_size": 848256040,
+    "note": "Finite-iteration endpoint retained for reproducibility, but not used as the accuracy reference because it contains the truncation error that the correction estimates."
+  }
+}

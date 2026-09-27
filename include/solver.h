@@ -105,6 +105,9 @@ public:
     // Results
     NumericalType ground_state_energy; ///< Best energy found at convergence.
     size_t iterations;                ///< Total iterations performed.
+    std::vector<NumericalType> energy_history; ///< Variational energy at each report.
+    size_t hamiltonian_columns = 0; ///< Number of determinant columns generated.
+    std::vector<size_t> hamiltonian_columns_history; ///< Cumulative column work at each report.
     std::vector<size_t> x_size_history; ///< History of x wavefunction sizes at each report interval.
     std::vector<size_t> z_size_history; ///< History of z wavefunction sizes at each report interval.
     std::vector<double> time_history;    ///< History of iteration times at
@@ -336,6 +339,12 @@ public:
         energy_correction_history.clear();
         energy_correction_seconds = 0.0;
         energy_correction_evaluations = 0;
+        energy_history.clear();
+        hamiltonian_columns = 0;
+        hamiltonian_columns_history.clear();
+        x_size_history.clear();
+        z_size_history.clear();
+        time_history.clear();
 
         typename H::Column column;
         size_t             last_xz_size = 0;
@@ -375,17 +384,20 @@ public:
 
         output_header();
 
-        for (auto i = 0; i < num_iter / report_interval; ++i)
+        while (iterations < num_iter)
         {
-            for (auto j = 0; j < report_interval; ++j)
+            const size_t iterations_in_batch =
+                std::min(report_interval, num_iter - iterations);
+            for (size_t j = 0; j < iterations_in_batch; ++j)
             {
-                iterations = i * report_interval + j + 1;
+                ++iterations;
 
                 // Coordinate Pick
                 // det_picked : wff<{det, {x, z}}>
                 wff_type det_picked;
                 timer.measure("Coordinate Pick", [&]()
                               { det_picked = coord_pick(vec_xz, sub_xz, num_coordinates); });
+                hamiltonian_columns += det_picked.size();
 
                 // Coordinate Update
                 ScaleFactorType scale_factor;
@@ -435,7 +447,7 @@ public:
             if (z_threshold_search)
             {
                 auto inc_ratio =
-                    1000.0 * (xz_size - last_xz_size) / sub_xz.size() / report_interval;
+                    1000.0 * (xz_size - last_xz_size) / sub_xz.size() / iterations_in_batch;
                 if ((inc_ratio >= 1) &&
                     (xz_size > 0.9 * vec_xz.max_load_factor() * vec_xz.capacity()))
                 {
@@ -667,6 +679,14 @@ public:
                      size_t H_i_size,
                      double time)
     {
+        NumericalType reported_energy = vecmath::index(energy, 0);
+        if (this->shifted) reported_energy += this->shift_value;
+        this->energy_history.push_back(reported_energy);
+        this->hamiltonian_columns_history.push_back(this->hamiltonian_columns);
+        this->x_size_history.push_back(x_size);
+        this->z_size_history.push_back(z_size);
+        this->time_history.push_back(time);
+
         if (this->verbose == 0) return;
 
         std::cout << std::setw(13) << std::left << iteration;
@@ -691,9 +711,6 @@ public:
                     << std::setprecision(2) << time;
         std::cout << std::endl;
 
-        this->x_size_history.push_back(x_size);
-        this->z_size_history.push_back(z_size);
-        this->time_history.push_back(time);
     }
 
     void output_final(const W &vec_xz, size_t iterations)
@@ -701,11 +718,11 @@ public:
         // Store the final computed energy in the Solver class.
         this->ground_state_energy = vecmath::index(vec_xz.get_variational_energy(), 0);
         this->iterations = iterations;
-        if (this->verbose == 0) return;
-
         if (this->shifted) {
             this->ground_state_energy += this->shift_value;
         }
+        if (this->verbose == 0) return;
+
         std::cout << "Final FCI Energy: " << std::setw(30)
                     << std::right << std::fixed
                     << std::setprecision(16) << this->ground_state_energy << std::endl;
@@ -717,6 +734,10 @@ public:
         Result result;
         result.energy = this->ground_state_energy;
         result.iterations = this->iterations;
+        result.report_interval = this->report_interval;
+        result.energy_history = this->energy_history;
+        result.hamiltonian_columns = this->hamiltonian_columns;
+        result.hamiltonian_columns_history = this->hamiltonian_columns_history;
         result.x_size_history = this->x_size_history;
         result.z_size_history = this->z_size_history;
         result.time_history = this->time_history;

@@ -18,6 +18,7 @@ include(GNUInstallDirs)
 
 option(CDFCI_ENABLE_OPENMP "Build OpenMP-enabled executables when OpenMP is available" ON)
 option(CDFCI_BUILD_PYTHON "Build the optional Python extension module" OFF)
+option(CDFCI_BUILD_EXPERIMENTS "Build publication experiment helpers" OFF)
 set(CDFCI_ARCH_FLAGS "" CACHE STRING "Additional architecture-specific compiler flags")
 
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -111,6 +112,17 @@ cdfci_add_executable(optorbfci src/optorbfci.cpp)
 cdfci_add_executable(xcdfci src/xcdfci.cpp)
 cdfci_add_openmp_executable(cdfci_omp src/main.cpp)
 cdfci_add_openmp_executable(xcdfci_omp src/xcdfci.cpp)
+
+if(CDFCI_BUILD_EXPERIMENTS)
+    cdfci_add_executable(
+        cdfci_energy_correction_benchmark
+        test/benchmark_energy_correction.cpp
+    )
+    cdfci_add_openmp_executable(
+        cdfci_energy_correction_benchmark_omp
+        test/benchmark_energy_correction.cpp
+    )
+endif()
 
 set(CDFCI_INSTALL_TARGETS cdfci cdfci_tools optorbfci xcdfci)
 if(CDFCI_HAVE_OPENMP)

@@ -282,8 +282,9 @@ public:
 
     NumericalType run()
     {
-        NumericalType energy;
-
+        if (init_iter != 0)
+            throw std::invalid_argument(
+                "OptOrbFCI resume via optimal_orbitals.init_iteration is not implemented; use 0.");
         Matrix        U(norb_orig, norb_comp);
         NumericalType zero_rdm;
         Matrix        one_rdm(norb_comp, norb_comp);
@@ -291,27 +292,20 @@ public:
 
         U.setZero();
 
-        if (init_iter == 0)
-        {
-            std::vector<std::pair<Orbital, NumericalType>> Eidx =
-                get_sorted_orbital_energy(fci.orbital_energy, norb_orig);
+        std::vector<std::pair<Orbital, NumericalType>> Eidx =
+            get_sorted_orbital_energy(fci.orbital_energy, norb_orig);
 
-            for (int i = 0; i < norb_comp; i++)
-                U(Eidx[alpha(i)].first / 2, i) = 1.0;
+        for (int i = 0; i < norb_comp; i++)
+            U(Eidx[alpha(i)].first / 2, i) = 1.0;
 
-            fci = rotate_basis(fci, U);
-            // run cdfci
-            CDFCIProgram<N> cdfci(opt, fci);
-            Result result = cdfci.run();
-            energy = result.energy;
-            cdfci.rdm_ptr->output_rdm(zero_rdm, one_rdm, two_rdm);
+        fci = rotate_basis(fci, U);
+        // run cdfci
+        CDFCIProgram<N> cdfci(opt, fci);
+        Result result = cdfci.run();
+        NumericalType energy = result.energy;
+        cdfci.rdm_ptr->output_rdm(zero_rdm, one_rdm, two_rdm);
 
-            init_iter = 1;
-        }
-        else
-        {
-            // load history file
-        }
+        init_iter = 1;
 
         Optimizer myOpt(opt["optimal_orbitals"]["optimizer"], zero_int, one_int, two_int);
         for (int iter = init_iter; iter < max_iter; iter++)

@@ -120,10 +120,12 @@ It also compares original and corrected CDFCI trajectories on the repository's
 H2O fixture, including compressed internal z and multicoordinate updates.
 CTest registers serial and available OpenMP versions.
 
-`test/benchmark_energy_correction.cpp` is a serial benchmark helper. Compile with
-the project's usual include paths and Eigen/quadmath, then pass FCIDUMP,
-iteration count, correction interval, reference energy and output JSON path.
-It alternates five baseline/enabled timing pairs with history disabled, followed
-by an accuracy trajectory run with history enabled. Loading FCIDUMP is outside
-the timings; solver allocation is inside. A supplied reference must match the
-actual input Hamiltonian, not just the fixture filename.
+`test/benchmark_energy_correction.cpp` underlies both serial and OpenMP
+benchmark targets. Compile with the project's usual include paths and
+Eigen/quadmath, then pass FCIDUMP, iteration count, correction interval,
+reference energy (or `auto`) and output JSON path. It supports up to 128 spin
+orbitals, records an accuracy trajectory, and reuses that baseline/enabled pair
+as the first timing pair. Loading FCIDUMP is outside the timings; solver
+allocation is inside. `auto` first runs the requested longer reference budget
+and records its tail energy change. A supplied reference must match the actual
+input Hamiltonian, not merely the molecule name.

@@ -254,6 +254,8 @@ struct Result {
     size_t iterations = 0;
     size_t report_interval = 0;
     std::vector<NumericalType> energy_history;
+    size_t hamiltonian_columns = 0;
+    std::vector<size_t> hamiltonian_columns_history;
     std::vector<size_t> x_size_history;
     std::vector<size_t> z_size_history;
     std::vector<double> time_history;

@@ -264,11 +264,7 @@ void CDFCIDriverFacade::set_max_load_factor(double x) {
 
 Result CDFCIDriverFacade::run() {
     CDFCIProgramDriver cdfci_driver(opt_);
-    auto res = cdfci_driver.run();
-
-    Result out;
-    out.energy = res.energy;
-    return out;
+    return cdfci_driver.run();
 }
 
 #endif

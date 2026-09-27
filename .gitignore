@@ -18,4 +18,7 @@ _cdfci*.so
 # Scheduler output and local run logs
 *.out
 *.err
+
+# Generated experiment data (may contain large FCIDUMP files)
+/experiment_results/
 *.log

@@ -156,7 +156,7 @@ TEST_CASE("H2O correction preserves the CDFCI trajectory and uses exact internal
     Det::constuct_masks();
     Option hopt = {{"type", "molecule"}, {"molecule", {{"fcidump_path", "data/h2o_sto3g_psi4.FCIDUMP"}, {"verbose", 0}}}};
     auto ham = Ham::init(hopt);
-    Option opts = {{"num_iterations", 1000}, {"report_interval", 100}, {"z_threshold", 1e-3},
+    Option opts = {{"num_iterations", 1001}, {"report_interval", 100}, {"z_threshold", 1e-3},
                    {"stopping_dx_threshold", 0}, {"max_wavefunction_size", 131072}, {"verbose", 0}};
     for (int coordinates : {1, 4}) {
         opts["num_coordinates"] = coordinates;
@@ -197,7 +197,16 @@ TEST_CASE("H2O correction preserves the CDFCI trajectory and uses exact internal
         }
         CHECK(result.energy_correction_history.size() == 15);
         CHECK(result.energy_correction_evaluations == 15);
-        CHECK(result.energy_correction.iteration == 1000);
+        CHECK(result.iterations == 1001);
+        CHECK(result.report_interval == 100);
+        CHECK(result.energy_history.size() == 11);
+        CHECK(result.hamiltonian_columns_history.size() == 11);
+        CHECK(result.hamiltonian_columns > 0);
+        CHECK(result.hamiltonian_columns_history.back() == result.hamiltonian_columns);
+        CHECK(result.x_size_history.size() == 11);
+        CHECK(result.z_size_history.size() == 11);
+        CHECK(result.time_history.size() == 11);
+        CHECK(result.energy_correction.iteration == 1001);
         CHECK(result.energy_correction.valid);
         CHECK(result.energy_correction.compressed_z);
         for (size_t i = 0; i + 1 < result.energy_correction_history.size(); ++i)
