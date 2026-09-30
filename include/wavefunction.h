@@ -22,8 +22,11 @@
 #include "container.h"
 #include "determinant.h"
 #include "hamiltonian.h"
+#include "ip_entry.h"
 #include <cmath>
 #include <type_traits>
+#include <unordered_map>
+#include <vector>
 
 #define DEFINE_ACCESSORS(NAME, MEMBER)                                 \
     data_matrix_type get_##NAME##_double() const {                     \
@@ -172,7 +175,8 @@ public:
         data_type x = {};
         auto val = data_.find_val(det);
         if (val)
-            x = slice_first_half(*val);
+            if constexpr (NSTATES == 1) x = ipentry::c(*val);
+            else x = slice_first_half(*val);
         return x;
     }
 
@@ -262,8 +266,9 @@ public:
         data_matrix_type xz = {};
         for (auto it = begin(); it != end(); ++it) {
             if constexpr (NSTATES == 1) {
-                xx += it->second[0] * it->second[0];
-                xz += it->second[0] * it->second[1];
+                const auto x = ipentry::c(it->second);
+                xx += x * x;
+                xz += x * ipentry::b(it->second);
             } else {
                 for (size_t i = 0; i < NSTATES; i++)
                 for (size_t j = 0; j < NSTATES; j++)
@@ -281,6 +286,8 @@ template <typename Container, int NSTATES = 1>
 class WaveFunctionFragment : public WaveFunctionBase<Container, NSTATES>
 {
 public:
+    double ip_pt_delta = 0;
+    size_t ip_diagonal_evaluations = 0;
     using Base = WaveFunctionBase<Container, NSTATES>;
     using typename Base::key_type;
     using typename Base::mapped_type;
@@ -305,6 +312,8 @@ public:
     void clear()
     {
         Base::clear();
+        ip_pt_delta = 0;
+        ip_diagonal_evaluations = 0;
     }
 
     void push_back(const value_type &val) { data_.push_back(val); } // const reference
@@ -314,13 +323,22 @@ public:
     void push_back(key_type &&det, mapped_type &&val) { data_.emplace_back(std::move(det), std::move(val)); }
 
     void append(WaveFunctionFragment<Container, NSTATES> &sub_xz)
-    { data_.append(sub_xz); }
+    {
+        data_.append(sub_xz);
+        ip_pt_delta += sub_xz.ip_pt_delta;
+        ip_diagonal_evaluations += sub_xz.ip_diagonal_evaluations;
+    }
 };
 
-template <typename Container, int NSTATES = 1>
+template <typename Container, int NSTATES = 1, bool COMPACT_IP = false>
 class WaveFunction : public WaveFunctionBase<Container, NSTATES>
 {
 public:
+    static constexpr bool uses_compact_ip = COMPACT_IP;
+    static constexpr bool stores_full_hii =
+        std::tuple_size<typename Container::mapped_type>::value == 3;
+    static constexpr bool supports_ip_correction =
+        COMPACT_IP || stores_full_hii;
     using Base = WaveFunctionBase<Container, NSTATES>;
     using typename Base::key_type;
     using typename Base::mapped_type;
@@ -331,6 +349,9 @@ public:
     using ContainerVectorType =
         ContainerVector<key_type, mapped_type, hasher, key_equal>;
     using wff_type = WaveFunctionFragment<ContainerVectorType, NSTATES>;
+    struct InternalCorrectionRow {
+        NumericalType c, b, hii;
+    };
 
     using typename Base::data_type;
     using typename Base::data_matrix_type;
@@ -348,6 +369,65 @@ protected:
 
     NumericalType max_load_factor_;
 
+    bool ip_enabled_ = false;
+    bool ip_internal_cache_enabled_ = false;
+    QUAD_PRECISION ip_pt_energy_ = 0;
+    size_t ip_diagonal_evaluations_ = 0;
+    std::vector<InternalCorrectionRow> ip_internal_rows_;
+    std::unordered_map<key_type, size_t, hasher, key_equal> ip_internal_index_;
+
+    bool is_internal(const key_type &det, const mapped_type &val) const
+    {
+        if constexpr (COMPACT_IP && !stores_full_hii) {
+            if (ip_enabled_)
+                return ip_internal_index_.find(det) != ip_internal_index_.end();
+        }
+        return ipentry::is_c(val);
+    }
+
+    NumericalType external_d(const mapped_type &val) const
+    {
+        if constexpr (COMPACT_IP) return val[0];
+        else return ipentry::d(val);
+    }
+
+    template<typename H>
+    void sync_ip_internal_row(const key_type &det, const mapped_type &val,
+                              const H &ham, bool known_diagonal = false,
+                              NumericalType diagonal = 0)
+    {
+        auto [it, inserted] = ip_internal_index_.emplace(det, ip_internal_rows_.size());
+        if (!ip_internal_cache_enabled_) return;
+        if (inserted) {
+            if (!known_diagonal) {
+                auto diagonal_det = det;
+                if (ipentry::has_hii(val)) {
+                    diagonal = ipentry::hii(val);
+                } else {
+                    diagonal = ham.get_diagonal(diagonal_det);
+                    ++ip_diagonal_evaluations_;
+                }
+            }
+            ip_internal_rows_.push_back({ipentry::c(val), ipentry::b(val), diagonal});
+        } else {
+            auto &row = ip_internal_rows_[it->second];
+            row.c = ipentry::c(val);
+            row.b = ipentry::b(val);
+        }
+    }
+
+    void sync_ip_internal_b(const key_type &det, NumericalType b)
+    {
+        // The index is populated by update_x before parallel z updates start.
+        // During those updates it is read-only; the main table's per-key update
+        // lock also serializes writes to the corresponding dense row.
+        const auto &index = ip_internal_index_;
+        const auto it = index.find(det);
+        if (it == index.end())
+            throw std::logic_error("Internal correction row is missing");
+        ip_internal_rows_[it->second].b = b;
+    }
+
 public:
     /* Constructors */
     WaveFunction(){}
@@ -357,6 +437,100 @@ public:
 
     /* Destructor */
     virtual ~WaveFunction() {}
+
+    void clear() override
+    {
+        Base::clear();
+        configure_ip_correction(false);
+    }
+
+    void configure_ip_correction(bool enabled)
+    {
+        ip_enabled_ = enabled;
+        ip_internal_cache_enabled_ = false;
+        ip_pt_energy_ = 0;
+        ip_diagonal_evaluations_ = 0;
+        ip_internal_rows_.clear();
+        ip_internal_index_.clear();
+    }
+
+    const std::vector<InternalCorrectionRow> &ip_internal_rows() const
+    {
+        return ip_internal_rows_;
+    }
+
+    NumericalType stored_c(const key_type &det, const mapped_type &val) const
+    {
+        return is_internal(det, val) ? val[0] : 0.0;
+    }
+
+    data_type get_x(const key_type &det) const
+    {
+        if constexpr (COMPACT_IP) {
+            const auto val = data_.find_val(det);
+            return val ? stored_c(det, *val) : data_type{};
+        }
+        return Base::get_x(det);
+    }
+
+    template<typename H>
+    void initialize_ip_correction(const H &ham, bool cache_internal = true)
+    {
+        configure_ip_correction(true);
+        ip_internal_cache_enabled_ = cache_internal;
+        if constexpr (NSTATES == 1 && supports_ip_correction) {
+            const QUAD_PRECISION norm = this->get_xx();
+            if (!(norm > 0) || !std::isfinite(static_cast<double>(norm))) {
+                return;
+            }
+            const double energy = static_cast<double>(this->get_xz() / norm);
+
+            // Cache diagonals and initialize the external PT2 amplitudes in one pass.
+            for (auto it = this->begin(); it != this->end(); ++it) {
+                auto det = it->first;
+                auto &val = it->second;
+                const bool owner = ipentry::is_c(val);
+                const double z = ipentry::b(val);
+                const double diagonal = ham.get_diagonal(det);
+                ++ip_diagonal_evaluations_;
+                ipentry::set_hii(val, diagonal, owner);
+
+                if (owner) {
+                    if ((COMPACT_IP && !stores_full_hii) || ip_internal_cache_enabled_)
+                        sync_ip_internal_row(det, val, ham, true, diagonal);
+                } else {
+                    const double gap = diagonal - energy;
+                    val[0] = -z / gap;
+                    ip_pt_energy_ += static_cast<QUAD_PRECISION>(z) * val[0];
+                }
+            }
+
+        }
+    }
+
+    bool ip_enabled() const { return ip_enabled_; }
+
+    EnergyCorrectionResult ip_correction_result(size_t iteration) const
+    {
+        EnergyCorrectionResult out;
+        out.iteration = iteration;
+        out.diagonal_evaluations = ip_diagonal_evaluations_;
+        const QUAD_PRECISION norm = this->get_xx();
+        if (!(norm > 0) || !std::isfinite(static_cast<double>(norm))) {
+            out.status = "invalid_norm";
+            return out;
+        }
+        const QUAD_PRECISION energy = this->get_xz() / norm;
+        out.variational_energy = static_cast<double>(energy);
+        out.external_correction = static_cast<double>(ip_pt_energy_ / norm);
+        out.external_valid = true;
+        out.internal_correction = 0.0;
+        out.internal_valid = true;
+        out.valid = true;
+        out.corrected_energy = out.variational_energy + out.external_correction;
+        out.status = "unchecked";
+        return out;
+    }
 
     NumericalType max_load_factor() const { return max_load_factor_; }
 
@@ -368,27 +542,80 @@ public:
     }
 
     /* Update x or z */
-    void update_x(key_type &det, data_type dx)
+    template<typename H>
+    void update_x(key_type &det, data_type dx, H &ham)
     {
+        if constexpr (NSTATES != 1) {
+            mapped_type vec_xz = {};
+            mapped_type val_new = {};
+            add_assign_first_half(val_new, dx);
+            int new_element = 1;
+            auto update_functor = [dx, &vec_xz, &new_element](mapped_type &val) {
+                new_element = is_zero_on_first_half(val);
+                vec_xz = val;
+                add_assign_first_half(val, dx);
+                return false;
+            };
+            upsert(data_, det, update_functor, val_new);
+            data_matrix_type delta_xx = {}, delta_xz = {};
+            for (size_t i = 0; i < NSTATES; i++)
+                for (size_t j = 0; j < NSTATES; j++) {
+                    delta_xx[IDX(i, j)] = dx[i] * vec_xz[X(j)] + vec_xz[X(i)] * dx[j] + dx[i] * dx[j];
+                    delta_xz[IDX(i, j)] = dx[i] * vec_xz[Z(j)];
+                }
+            this->update_xx(delta_xx);
+            this->update_xz(delta_xz);
+            this->update_size_x(new_element);
+            return;
+        } else {
         mapped_type vec_xz = {};
         mapped_type val_new = {};
+        mapped_type updated_owner = {};
         add_assign_first_half(val_new, dx);
         int new_element = 1;
-        auto update_functor = [dx, &vec_xz, &new_element](mapped_type &val) {
-            new_element = is_zero_on_first_half(val);
+        auto update_functor = [&, dx](mapped_type &val) {
+            const bool old_c = is_internal(det, val);
+            const double old_x = old_c ? val[0] : 0.0;
+            const double old_z = ipentry::b(val);
+            if constexpr (stores_full_hii) {
+                if (ip_enabled_ && !ipentry::has_hii(val)) {
+                    ipentry::set_hii(val, ham.get_diagonal(det), old_c);
+                    ++ip_diagonal_evaluations_;
+                }
+            }
+            if (ip_enabled_ && !old_c)
+                ip_pt_energy_ -= static_cast<QUAD_PRECISION>(old_z) * external_d(val);
+            new_element = !old_c;
             vec_xz = val;
-            add_assign_first_half(val, dx); // x += dx
+            val[0] = old_x + dx;
+            ipentry::set_owner(val, true);
+            updated_owner = val;
             return false; // no deletion
         };
-        // insert val_new or update vec_xz
-        upsert(data_, det, update_functor, val_new);
+        // Reuse a selected row's stored diagonal when available.
+        if (ip_enabled_) {
+            if (!update_fn(data_, det, update_functor)) {
+                if constexpr (stores_full_hii) {
+                    ipentry::set_hii(val_new, ham.get_diagonal(det), true);
+                    ++ip_diagonal_evaluations_;
+                }
+                if (upsert(data_, det, update_functor, val_new))
+                    updated_owner = val_new;
+            }
+        } else {
+            upsert(data_, det, update_functor, val_new);
+        }
+        if (ip_enabled_ && ((COMPACT_IP && !stores_full_hii) || ip_internal_cache_enabled_))
+            sync_ip_internal_row(det, updated_owner, ham);
 
         // Update xx, xz and size
         // (x + dx)'*(x + dx) = x'*x + dx'*x + x'*dx +  dx'*dx
         // (x + dx)'*(z + dz) = x'*z + dx'*z + (x+dx)'*dz (the third part updated later)
         if constexpr (NSTATES == 1) {
-            this->update_xx(2.0 * vec_xz[0] * dx + dx * dx);
-            this->update_xz(vec_xz[1] * dx);
+            const auto old_x = is_internal(det, vec_xz) && !new_element
+                ? ipentry::c(vec_xz) : 0.0;
+            this->update_xx(2.0 * old_x * dx + dx * dx);
+            this->update_xz(ipentry::b(vec_xz) * dx);
         } else {
             // update xx
             data_matrix_type delta_xx = {};
@@ -405,6 +632,7 @@ public:
         }
         this->update_size_x(new_element);
         return;
+        }
     }
 
     // Update z and store the updated wavefunction into sub_xz.
@@ -416,14 +644,53 @@ public:
     // of *this need to be updated outside this function.
     //   Assume sub_xz is properly initialized.
     //   New z is inserted only if abs(z) > z_threshould.
-    template<typename C>
-    data_type update_z(C &column, data_type dx,
-                  wff_type &sub_xz,
+    template<typename C, typename H>
+    data_type update_z(C &column, data_type dx, H &ham, NumericalType e0,
+                   wff_type &sub_xz,
                   NumericalType z_threshold = 0.0)
     {
+        if constexpr (NSTATES != 1) {
+            data_type new_z = {};
+            data_matrix_type delta_xz = {};
+            NumericalType scale = this->get_scale();
+            for (auto &entry : column) {
+                auto &det = entry.first;
+                auto h = entry.second;
+                data_type dz = multiply(dx, h);
+                mapped_type vec_xz = {}, val_new = {};
+                add_assign_second_half(vec_xz, dz);
+                add_assign_second_half(val_new, dz);
+                int new_element = 1;
+                auto update_functor = [dz, &vec_xz, &new_element](mapped_type &val) {
+                    new_element = is_zero_on_second_half(val);
+                    add_assign_second_half(val, dz);
+                    vec_xz = val;
+                    return false;
+                };
+                auto dz_norm = max_norm(multiply(dz, scale));
+                if (dz_norm > z_threshold) {
+                    upsert(data_, det, update_functor, val_new);
+                    sub_xz.update_size_z(new_element);
+                    for (size_t i = 0; i < NSTATES; i++)
+                        for (size_t j = 0; j < NSTATES; j++)
+                            delta_xz[IDX(i,j)] += vec_xz[X(i)] * dz[j];
+                    sub_xz.push_back(det, vec_xz);
+                } else if (update_fn(data_, det, update_functor)) {
+                    for (size_t i = 0; i < NSTATES; i++)
+                        for (size_t j = 0; j < NSTATES; j++)
+                            delta_xz[IDX(i,j)] += vec_xz[X(i)] * dz[j];
+                    sub_xz.push_back(det, vec_xz);
+                }
+                add_assign(new_z, multiply(slice_first_half(vec_xz), h));
+            }
+            sub_xz.update_xz(delta_xz);
+            return new_z;
+        } else {
         data_type new_z = {}; // Store the recalculated z_i.
         data_matrix_type delta_xz = {};
         NumericalType scale = this->get_scale();
+        double pt_delta = 0;
+        size_t diagonal_evaluations = 0;
         // Loop over the column
         for (auto &entry : column)
         {
@@ -437,21 +704,67 @@ public:
             add_assign_second_half(val_new, dz);
 
             int new_element = 1;
-            auto update_functor = [dz, &vec_xz, &new_element](mapped_type &val) {
+            auto update_functor = [&, dz](mapped_type &val) {
+                const bool owner = is_internal(det, val);
+                const double old_d = owner ? 0.0 : external_d(val);
+                const double old_z = ipentry::b(val);
+                if constexpr (stores_full_hii) {
+                    if (ip_enabled_ && !ipentry::has_hii(val)) {
+                        ipentry::set_hii(val, ham.get_diagonal(det), owner);
+                        ++diagonal_evaluations;
+                    }
+                }
                 new_element = is_zero_on_second_half(val);
-                add_assign_second_half(val, dz); // z += dz
+                val[1] = old_z + dz;
+                if (ip_internal_cache_enabled_ && owner)
+                    sync_ip_internal_b(det, val[1]);
+                if (ip_enabled_ && !owner) {
+                    double diagonal;
+                    if constexpr (stores_full_hii) {
+                        diagonal = ipentry::hii(val);
+                    } else {
+                        diagonal = ham.get_diagonal(det);
+                        ++diagonal_evaluations;
+                    }
+                    const double gap = diagonal - e0;
+                    const double new_d = -val[1] / gap;
+                    pt_delta += val[1]*new_d - old_z*old_d;
+                    val[0] = new_d;
+                }
                 vec_xz = val;
+                if constexpr (COMPACT_IP) {
+                    // Candidate fragments carry c (zero for external rows),
+                    // while the main map keeps c+d for incremental PT2.
+                    if (!owner) vec_xz[0] = 0.0;
+                }
                 return false;
             };
             auto dz_norm = max_norm(multiply(dz, scale));
+            // Existing external rows reuse the cached diagonal; only newly
+            // stored rows evaluate one for the first time.
+            const bool found = ip_enabled_ && update_fn(data_, det, update_functor);
             if (dz_norm > z_threshold)
             {
-                // insert val_new or update vec_xz
-                upsert(data_, det, update_functor, val_new);
+                double inserted_pt_delta = 0;
+                if (!found) {
+                    // The disabled path retains the original single upsert.
+                    if (ip_enabled_) {
+                        const double hd = ham.get_diagonal(det);
+                        ++diagonal_evaluations;
+                        if constexpr (stores_full_hii)
+                            ipentry::set_hii(val_new, hd, false);
+                        val_new[1] = dz;
+                        const double gap = hd - e0;
+                        val_new[0] = -dz/gap;
+                        inserted_pt_delta = dz*val_new[0];
+                    }
+                    const bool inserted = upsert(data_, det, update_functor, val_new);
+                    if (inserted) pt_delta += inserted_pt_delta;
+                }
 
                 sub_xz.update_size_z(new_element);
                 if constexpr (NSTATES == 1) {
-                    delta_xz += vec_xz[0] * dz;
+                    delta_xz += ipentry::c(vec_xz) * dz;
                 } else {
                     for (size_t i = 0; i < NSTATES; i++)
                         for (size_t j = 0; j < NSTATES; j++)
@@ -461,11 +774,11 @@ public:
             }
             else
             {
-                bool exist_z_flag = update_fn(data_, det, update_functor);
+                bool exist_z_flag = ip_enabled_ ? found : update_fn(data_, det, update_functor);
                 if (exist_z_flag)
                 {
                     if constexpr (NSTATES == 1) {
-                        delta_xz += vec_xz[0] * dz;
+                        delta_xz += ipentry::c(vec_xz) * dz;
                     } else {
                         for (size_t i = 0; i < NSTATES; i++)
                             for (size_t j = 0; j < NSTATES; j++)
@@ -480,11 +793,14 @@ public:
             // with threshold, we ensure xz = x'*z but not z = Hx.
 
             // Recalculate z
-            add_assign(new_z, multiply(slice_first_half(vec_xz), h));
+            add_assign(new_z, multiply(ipentry::c(vec_xz), h));
         }
 
+        sub_xz.ip_pt_delta += pt_delta;
+        sub_xz.ip_diagonal_evaluations += diagonal_evaluations;
         sub_xz.update_xz(delta_xz); // Do high-precision operations only once
         return new_z;
+        }
     }
 
     template<typename H>
@@ -494,6 +810,7 @@ public:
     {
         // Initialize sub_xz
         sub_xz.clear();
+        const NumericalType e0 = vecmath::index(this->get_variational_energy(), 0);
 
         // For (det, dx) in det_picked, update x[det] += dx
         for (const auto &keyval : det_picked)
@@ -501,7 +818,7 @@ public:
             key_type det = keyval.first;
             data_type dx = slice_first_half(keyval.second);
 
-            update_x(det, dx);
+            update_x(det, dx, h);
         }
 
         // For (det, dx) in det_picked, update z[i] += h(i, det) * dx
@@ -535,7 +852,7 @@ public:
             }
 #else
             auto column = h.get_column(det);
-            new_z = update_z(column, dx, sub_xz, z_threshold);
+            new_z = update_z(column, dx, h, e0, sub_xz, z_threshold);
 #endif
             assign_second_half(keyval.second, new_z);
         }
@@ -557,6 +874,8 @@ public:
         // Reduce sub_xz to *this
         this->update_xz(sub_xz.get_xz());
         this->update_size_z(sub_xz.size_z());
+        ip_pt_energy_ += sub_xz.ip_pt_delta;
+        ip_diagonal_evaluations_ += sub_xz.ip_diagonal_evaluations;
 
         return;
     }
@@ -579,7 +898,9 @@ public:
 
             wff_type sub_xz_parallel;
             data_type new_z_parallel;
-            new_z_parallel = update_z(column_parallel, dx, sub_xz_parallel, z_threshold);
+            new_z_parallel = update_z(column_parallel, dx, *h_shared,
+                                      vecmath::index(this->get_variational_energy(), 0),
+                                      sub_xz_parallel, z_threshold);
 
             // Reduce sub_xz_parallel to sub_xz
             #pragma omp critical
@@ -612,9 +933,11 @@ public:
         mapped_type vec_xz = {};
         mapped_type val_new = {};
         add_assign_second_half(val_new, new_z);
-        auto update_functor = [new_z, &vec_xz](mapped_type &val) {
+        auto update_functor = [&, new_z](mapped_type &val) {
             vec_xz = val;
             assign_second_half(val, new_z);
+            if (ip_internal_cache_enabled_ && is_internal(det, val))
+                sync_ip_internal_b(det, ipentry::b(val));
             return false;
         };
         upsert(data_, det, update_functor, val_new);
@@ -622,7 +945,7 @@ public:
         // Update xz
         // x*(z+dz) = xz + x*dz
         if constexpr (NSTATES == 1) {
-            this->update_xz(vec_xz[0] * (new_z - vec_xz[1]));
+            this->update_xz(ipentry::c(vec_xz) * (new_z - vec_xz[1]));
         } else {
             data_matrix_type delta_xz = {};
             for (size_t i = 0; i < NSTATES; i++)
@@ -654,6 +977,7 @@ public:
             if (status != 0) {
                 return status;
             }
+            configure_ip_correction(false);
         } catch (const std::exception& e) {
             std::cerr << "Exception: " << e.what() << std::endl;
             return -1; // Return error code for exception
@@ -686,7 +1010,23 @@ public:
             return -1;
         }
         try {
-            data_.dump_to_file(file);
+            if constexpr (COMPACT_IP) {
+                // The first slot holds d on external rows while IP is active.
+                // A checkpoint stores only the variational c there; d is
+                // reconstructed from b and H_ii when IP initializes on load.
+                const uint64_t n = static_cast<uint64_t>(data_.size());
+                dump(file, n);
+                data_.loop([&](const auto &entry) {
+                    auto value = entry.second;
+                    if (!is_internal(entry.first, value)) value[0] = 0;
+                    dump(file, entry.first);
+                    dump(file, value);
+                });
+                if (!file) return -2;
+            } else {
+                const int status = data_.dump_to_file(file);
+                if (status != 0) return status;
+            }
         } catch (const std::exception& e) {
             std::cerr << "Exception: " << e.what() << std::endl;
             return -1; // Return error code for exception

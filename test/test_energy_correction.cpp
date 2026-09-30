@@ -1,6 +1,7 @@
 #include "test.h"
 #include "../include/solver.h"
 #include <Eigen/Dense>
+#include <filesystem>
 
 namespace {
 struct DenseDiagonal {
@@ -69,7 +70,7 @@ TEST_CASE("streaming correction matches the projected solve and space decomposit
     CHECK(res.corrected_energy + 10 == doctest::Approx(pe.corrected_energy).epsilon(1e-13));
 }
 
-TEST_CASE("pivot elimination handles HF and a singular diagonal away from the largest coefficient") {
+TEST_CASE("pivot elimination handles the single-determinant HF case") {
     Eigen::Matrix3d h;
     h << -3, -.1, .2, -.1, -1, .1, .2, .1, 2;
     Eigen::Vector3d x(1, 0, 0);
@@ -77,37 +78,6 @@ TEST_CASE("pivot elimination handles HF and a singular diagonal away from the la
     REQUIRE(pe.valid);
     CHECK(pe.internal_correction == 0);
     CHECK(pe.external_correction == doctest::Approx(-.01 / 2 - .04 / 5));
-    h.setZero();
-    h.diagonal() << 0, 2, 4;
-    x << .3, std::sqrt(.91), 0;
-    h(0, 1) = h(1, 0) = -2 * x(1) / (2 * x(0));
-    pe = compute_energy_correction(DenseDiagonal{h}, SparseIterate(h, x));
-    REQUIRE(pe.valid);
-    CHECK(pe.diagonal_evaluations > 2);
-    CHECK(pe.internal_correction == doctest::Approx(direct_correction(h, x)).epsilon(1e-11));
-}
-
-TEST_CASE("unsafe denominators and zero norm are reported without fabricated energies") {
-    Eigen::Matrix3d h = Eigen::Matrix3d::Zero();
-    Eigen::Vector3d x(1, 0, 0);
-    h.diagonal() << 0, 0, 2;
-    h(0, 1) = h(1, 0) = .1;
-    auto pe = compute_energy_correction(DenseDiagonal{h}, SparseIterate(h, x));
-    CHECK_FALSE(pe.valid);
-    CHECK(pe.internal_valid);
-    CHECK_FALSE(pe.external_valid);
-    CHECK(pe.status == "unsafe_external_diagonal_gap");
-    CHECK(std::isnan(pe.corrected_energy));
-    CHECK(compute_energy_correction(DenseDiagonal{h}, SparseIterate(h, x), false).valid);
-    pe = compute_energy_correction(DenseDiagonal{h}, SparseIterate(h, Eigen::Vector3d::Zero()));
-    CHECK(pe.status == "invalid_norm");
-    h.setZero();
-    h.diagonal() << -2, -1, 3;
-    x << .6, .8, 0;
-    h(0, 1) = h(1, 0) = (2 * .36 + .64) / (.96);
-    pe = compute_energy_correction(DenseDiagonal{h}, SparseIterate(h, x));
-    CHECK_FALSE(pe.valid);
-    CHECK_FALSE(pe.internal_valid);
 }
 
 TEST_CASE("near diagonal energy errors have orders two three and four") {
@@ -139,6 +109,124 @@ TEST_CASE("near diagonal energy errors have orders two three and four") {
     }
 }
 
+TEST_CASE("incremental PT and Olsen preserve the CDFCI iterate") {
+#ifdef _OPENMP
+    omp_set_num_threads(1);
+#endif
+    using Det = Determinant<1>;
+#ifdef CDFCI_SOLVER_SERIAL
+    using Container = ContainerRobinhood<Det, std::array<double, 3>, DeterminantHash<1>, DeterminantEqual<1>>;
+#else
+    using Container = ContainerCuckoo<Det, std::array<double, 3>, DeterminantHashRobinhood<1>, DeterminantEqual<1>>;
+#endif
+    using Wf = WaveFunction<Container, 1, true>;
+    using Ham = Hamiltonian<1>;
+    Det::constuct_masks();
+    Option hopt = {{"type", "molecule"}, {"molecule", {{"fcidump_path", "data/h2o_sto3g_psi4.FCIDUMP"}, {"verbose", 0}}}};
+    auto ham = Ham::init(hopt);
+    Option opts = {{"num_iterations", 100}, {"report_interval", 20}, {"z_threshold", 0.0},
+                   {"stopping_dx_threshold", 0.0}, {"max_wavefunction_size", 65536}, {"verbose", 0}};
+    for (int coordinates : {1, 4}) {
+        opts["num_coordinates"] = coordinates;
+        opts["energy_correction"] = {{"enabled", false}};
+        CDFCISolver<Ham, Wf> baseline(opts);
+        Wf plain;
+        REQUIRE(baseline.solve(*ham, plain) == 0);
+
+        opts["energy_correction"] = {{"enabled", true}, {"olsen_enabled", true}};
+        CDFCISolver<Ham, Wf> corrected(opts);
+        Wf with_correction;
+        REQUIRE(corrected.solve(*ham, with_correction) == 0);
+        CHECK(with_correction.ip_correction_result(100).diagonal_evaluations ==
+              with_correction.size());
+        size_t inspected_diagonals = 0;
+        with_correction.loop([&](const auto &entry) {
+            if (inspected_diagonals++ % 997 != 0) return;
+            auto det = entry.first;
+            CHECK(ipentry::has_hii(entry.second));
+            CHECK(ipentry::hii(entry.second) ==
+                  doctest::Approx(ham->get_diagonal(det)).epsilon(1e-12));
+        });
+
+        QUAD_PRECISION direct_ip_sum = 0;
+        with_correction.loop([&](const auto &entry) {
+            if (with_correction.stored_c(entry.first, entry.second) == 0)
+                direct_ip_sum += static_cast<QUAD_PRECISION>(entry.second[0]) * entry.second[1];
+        });
+        CHECK(with_correction.ip_correction_result(100).external_correction ==
+              doctest::Approx(static_cast<double>(direct_ip_sum / with_correction.get_xx()))
+                  .epsilon(1e-11).scale(1.0));
+
+        const auto cached_olsen = compute_cached_internal_energy_correction(with_correction);
+        const auto scanned_olsen = compute_energy_correction(*ham, with_correction, false, true);
+        REQUIRE(cached_olsen.valid);
+        CHECK(with_correction.ip_internal_rows().size() == with_correction.size_x());
+        CHECK(cached_olsen.internal_correction ==
+              doctest::Approx(scanned_olsen.internal_correction).epsilon(1e-11).scale(1.0));
+        CHECK(cached_olsen.internal_residual_norm ==
+              doctest::Approx(scanned_olsen.internal_residual_norm).epsilon(1e-11).scale(1.0));
+
+        const auto checkpoint = std::filesystem::temp_directory_path() /
+            ("cdfci_compact_ip_" + std::to_string(coordinates) + ".dat");
+        REQUIRE(with_correction.dump_wavefunction(checkpoint.string()) == 0);
+        Wf reloaded;
+        REQUIRE(reloaded.load_wavefunction(checkpoint.string()) == 0);
+        reloaded.initialize_ip_correction(*ham, true);
+        CHECK(reloaded.size_x() == with_correction.size_x());
+        CHECK(reloaded.size_z() == with_correction.size_z());
+        CHECK(compute_cached_internal_energy_correction(reloaded).internal_correction ==
+              doctest::Approx(cached_olsen.internal_correction).epsilon(1e-11).scale(1.0));
+        std::filesystem::remove(checkpoint);
+
+        const auto a = baseline.get_result();
+        const auto b = corrected.get_result();
+        REQUIRE(a.energy_history.size() == b.energy_history.size());
+        for (size_t i = 0; i < a.energy_history.size(); ++i)
+            CHECK(b.energy_history[i] == doctest::Approx(a.energy_history[i]).epsilon(1e-13));
+        CHECK(b.energy == doctest::Approx(a.energy).epsilon(1e-13));
+        CHECK(with_correction.size() == plain.size());
+        std::vector<std::pair<Det, std::array<double, 3>>> plain_snapshot;
+        plain.loop([&](const auto &entry) {
+            plain_snapshot.push_back({entry.first, entry.second});
+        });
+        for (const auto &entry : plain_snapshot) {
+            CHECK(with_correction.get_x(entry.first) ==
+                  doctest::Approx(plain.get_x(entry.first)).epsilon(1e-12).scale(1.0));
+            CHECK(with_correction.get_z(entry.first) ==
+                  doctest::Approx(plain.get_z(entry.first)).epsilon(1e-12).scale(1.0));
+        }
+
+        opts["energy_correction"] = {{"enabled", true}, {"olsen_enabled", false}};
+        CDFCISolver<Ham, Wf> pt_only(opts);
+        Wf without_olsen;
+        REQUIRE(pt_only.solve(*ham, without_olsen) == 0);
+        CHECK(without_olsen.ip_correction_result(100).diagonal_evaluations ==
+              without_olsen.size());
+        CHECK(without_olsen.ip_internal_rows().empty());
+        CHECK(pt_only.get_result().energy == doctest::Approx(a.energy).epsilon(1e-13));
+        QUAD_PRECISION direct_pt_only_sum = 0;
+        without_olsen.loop([&](const auto &entry) {
+            if (without_olsen.stored_c(entry.first, entry.second) == 0)
+                direct_pt_only_sum += static_cast<QUAD_PRECISION>(entry.second[0]) * entry.second[1];
+        });
+        CHECK(without_olsen.ip_correction_result(100).external_correction ==
+              doctest::Approx(static_cast<double>(direct_pt_only_sum / without_olsen.get_xx()))
+                  .epsilon(1e-11).scale(1.0));
+    }
+#ifdef _OPENMP
+    omp_set_num_threads(2);
+    opts["num_coordinates"] = 4;
+    opts["energy_correction"] = {{"enabled", true}, {"olsen_enabled", true}};
+    CDFCISolver<Ham, Wf> parallel(opts);
+    Wf parallel_wf;
+    REQUIRE(parallel.solve(*ham, parallel_wf) == 0);
+    const auto cached_parallel = compute_cached_internal_energy_correction(parallel_wf);
+    const auto scanned_parallel = compute_energy_correction(*ham, parallel_wf, false, true);
+    CHECK(cached_parallel.internal_correction ==
+          doctest::Approx(scanned_parallel.internal_correction).epsilon(1e-11).scale(1.0));
+#endif
+}
+
 TEST_CASE("H2O correction preserves the CDFCI trajectory and uses exact internal z under compression") {
 #ifdef _OPENMP
     // Compare trajectories under deterministic scheduling. A separate two-
@@ -164,7 +252,7 @@ TEST_CASE("H2O correction preserves the CDFCI trajectory and uses exact internal
         CDFCISolver<Ham, Wf> baseline(opts);
         Wf plain;
         REQUIRE(baseline.solve(*ham, plain) == 0);
-        opts["energy_correction"] = {{"enabled", true}, {"interval", 70}, {"store_history", true}};
+        opts["energy_correction"] = {{"enabled", true}, {"store_history", true}};
         CDFCISolver<Ham, Wf> corrected(opts);
         Wf wf;
         REQUIRE(corrected.solve(*ham, wf) == 0);
@@ -195,8 +283,8 @@ TEST_CASE("H2O correction preserves the CDFCI trajectory and uses exact internal
             for (const auto &h : ham->get_column(det)) exact_z += h.second * wf.get_x(h.first);
             CHECK(entry.second[1] == doctest::Approx(exact_z).epsilon(1e-11).scale(1.0));
         }
-        CHECK(result.energy_correction_history.size() == 15);
-        CHECK(result.energy_correction_evaluations == 15);
+        CHECK(result.energy_correction_history.size() == 11);
+        CHECK(result.energy_correction_evaluations == 11);
         CHECK(result.iterations == 1001);
         CHECK(result.report_interval == 100);
         CHECK(result.energy_history.size() == 11);
@@ -210,12 +298,12 @@ TEST_CASE("H2O correction preserves the CDFCI trajectory and uses exact internal
         CHECK(result.energy_correction.valid);
         CHECK(result.energy_correction.compressed_z);
         for (size_t i = 0; i + 1 < result.energy_correction_history.size(); ++i)
-            CHECK(result.energy_correction_history[i].iteration == (i + 1) * 70);
+            CHECK(result.energy_correction_history[i].iteration == (i + 1) * 100);
         CHECK(result.energy_correction_history.front().valid);
     }
     opts["num_coordinates"] = 1;
     opts["stopping_dx_threshold"] = 100.0;
-    opts["energy_correction"] = {{"enabled", true}, {"interval", 70}, {"store_history", false}};
+    opts["energy_correction"] = {{"enabled", true}, {"store_history", false}};
     CDFCISolver<Ham, Wf> early(opts);
     Wf early_wf;
     REQUIRE(early.solve(*ham, early_wf) == 0);

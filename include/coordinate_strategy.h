@@ -19,6 +19,7 @@
 
 #include "config.h"
 #include "vecmath.h"
+#include "ip_entry.h"
 #include <memory>
 #include <cmath>
 #include <limits>
@@ -70,7 +71,11 @@ public:
         data_matrix_type xx = vec_xz.get_xx_double();
         for (const auto &det : det_list)
         {
-            data_type x = vecmath::slice_first_half(det.second);
+            data_type x = {};
+            if constexpr (W::NSTATES_val == 1)
+                x = ipentry::c(det.second);
+            else
+                x = vecmath::slice_first_half(det.second);
             data_type z = vecmath::slice_second_half(det.second);
             // data_type g = vec_xz.get_grad(x, z);
             data_type g = {};
@@ -130,7 +135,7 @@ public:
 
         for (auto &det : det_list)
         {
-            auto          x        = det.second[0];
+            auto          x        = ipentry::c(det.second);
             auto          z        = det.second[1];
             NumericalType abs_grad = fabs(x * w + z);
             // early stop
@@ -228,7 +233,7 @@ public:
         for (auto it = start_it; it != end_it; ++it)
         {
             auto &det = *it;
-            auto x = det.second[0];
+            auto x = ipentry::c(det.second);
             auto z = det.second[1];
             NumericalType abs_grad = fabs(x * w + z);
             // early stop
@@ -435,7 +440,11 @@ public:
         for (auto &det_picked : det_list)
         {
             auto det = det_picked.first;
-            auto x   = vecmath::slice_first_half(det_picked.second);
+            data_type x = {};
+            if constexpr (W::NSTATES_val == 1)
+                x = ipentry::c(det_picked.second);
+            else
+                x = vecmath::slice_first_half(det_picked.second);
             auto z   = vecmath::slice_second_half(det_picked.second);
             auto g   = vec_xz.get_grad(x, z);
             auto dA  = h.get_diagonal(det);
@@ -498,7 +507,7 @@ public:
         for (auto it = det_list.begin(); it != det_list.end(); ++it, ++i)
         {
             auto det    = it->first;
-            x_vec(i)    = it->second[0];
+            x_vec(i)    = ipentry::c(it->second);
             z_vec(i)    = it->second[1];
             H_mat(i, i) = h.get_diagonal(det);
             j           = i + 1;

@@ -42,7 +42,7 @@ public:
     using ham_type    = Hamiltonian<N>;
     using det_type    = typename ham_type::det_type;
     using key_type    = det_type;
-    using mapped_type = std::array<NumericalType, 2>;
+    using mapped_type = std::array<NumericalType, 3>; // {c+d, b, cached H_ii with owner bit}
     using equal_type  = DeterminantEqual<N>;
 #ifdef CDFCI_SOLVER_SERIAL
     using hash_type      = DeterminantHash<N>;
@@ -51,7 +51,7 @@ public:
     using hash_type      = DeterminantHashRobinhood<N>;
     using container_type = ContainerCuckoo<key_type, mapped_type, hash_type, equal_type>;
 #endif
-    using wf_type     = WaveFunction<container_type>;
+    using wf_type     = WaveFunction<container_type, 1, true>;
     using solver_type = Solver<ham_type, wf_type>;
 
     Option opt;

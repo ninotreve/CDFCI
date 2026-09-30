@@ -21,6 +21,7 @@
 
 #include "wavefunction.h"
 #include "hamiltonian.h"
+#include "ip_entry.h"
 
 template <typename H, typename W>
 class Perturbation
@@ -34,8 +35,8 @@ public:
         // Compute perturbation energy here
         auto my_functor = [&](const auto& val) {
             auto det = val.first;
-            auto x = vecmath::two_norm(vecmath::slice_first_half(val.second));
-            auto z = vecmath::two_norm(vecmath::slice_second_half(val.second));
+            auto x = std::abs(vec_xz.stored_c(det, val.second));
+            auto z = std::abs(ipentry::b(val.second));
 
             if (x == 0.0) {
                 NumericalType diag_element = ham.get_diagonal(det);

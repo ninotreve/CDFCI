@@ -1,15 +1,16 @@
 {
+    "max_memory": 180.0,
     "hamiltonian": {
         "type": "molecule",
         "molecule": {
-            "fcidump_path": "../data/h2o_sto3g_psi4.FCIDUMP",
+            "fcidump_path": "../data/c2_ccpvdz_psi4.FCIDUMP",
             "threshold": 0.0
         }
     },
     "solver": {
         "type": "cdfci",
         "cdfci": {
-            "num_iterations": 100000,
+            "num_iterations": 1000000,
             "report_interval": 10000,
             "z_threshold": 0.0,
             "stopping_dx_threshold": 0.0,

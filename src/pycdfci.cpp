@@ -19,7 +19,6 @@ PYBIND11_MODULE(_cdfci, m) {
         .def_readonly("external_valid", &EnergyCorrectionResult::external_valid)
         .def_readonly("valid", &EnergyCorrectionResult::valid)
         .def_readonly("status", &EnergyCorrectionResult::status)
-        .def_readonly("scope", &EnergyCorrectionResult::scope)
         .def_readonly("compressed_z", &EnergyCorrectionResult::compressed_z)
         .def_readonly("diagonal_evaluations", &EnergyCorrectionResult::diagonal_evaluations)
         .def_readonly("seconds", &EnergyCorrectionResult::seconds);

@@ -80,9 +80,9 @@ public:
                   {"recalculate_z_on_load", false},
                   {"save_configuration", false},
                   {"save_configuration_location", "./wavefunction.out"},
-                  {"energy_correction", {{"enabled", false}, {"scope", "stored"},
-                                         {"interval", 0}, {"store_history", false},
-                                         {"gap_tolerance", 1e-12}}},
+                  {"energy_correction", {{"enabled", false},
+                                         {"olsen_enabled", true},
+                                         {"store_history", false}}},
                   {"verbose", 2}};
 
     size_t num_iter;                         ///< Total number of coordinate descent iterations to perform.
@@ -118,10 +118,8 @@ public:
     NumericalType shift_value = 0.0; ///< Value of the energy shift applied to the Hamiltonian.
 
     bool energy_correction_enabled = false;
-    bool energy_correction_external = true;
+    bool energy_correction_olsen = true;
     bool energy_correction_store_history = false;
-    size_t energy_correction_interval = 1;
-    NumericalType energy_correction_gap_tolerance = 1e-12;
     EnergyCorrectionResult last_energy_correction;
     std::vector<EnergyCorrectionResult> energy_correction_history;
     double energy_correction_seconds = 0.0;
@@ -150,58 +148,72 @@ public:
         verbose                    = opt["verbose"];
         const auto &pe = opt.at("energy_correction");
         energy_correction_enabled = pe.at("enabled").get<bool>();
+        energy_correction_olsen = pe.value("olsen_enabled", true);
         energy_correction_store_history = pe.at("store_history").get<bool>();
-        const std::string scope = pe.at("scope").get<std::string>();
-        if (scope != "internal" && scope != "stored")
-            throw std::invalid_argument("energy_correction.scope must be internal or stored");
-        energy_correction_external = scope == "stored";
-        if (!pe.at("interval").is_number_integer() || pe.at("interval").get<int64_t>() < 0)
-            throw std::invalid_argument("energy_correction.interval must be a nonnegative integer");
-        energy_correction_interval = pe.at("interval").get<size_t>();
-        if (energy_correction_interval == 0) energy_correction_interval = report_interval;
-        energy_correction_gap_tolerance = pe.at("gap_tolerance").get<NumericalType>();
-        if (!(energy_correction_gap_tolerance > 0) || !std::isfinite(energy_correction_gap_tolerance))
-            throw std::invalid_argument("energy_correction.gap_tolerance must be positive and finite");
-        if (energy_correction_enabled && W::NSTATES_val != 1)
+        if (energy_correction_active() && W::NSTATES_val != 1)
             throw std::invalid_argument("energy_correction currently supports single-state CDFCI only");
     }
 
-    void record_energy_correction(const H &h, const W &wf, size_t iteration)
+    bool energy_correction_active() const
+    {
+        return energy_correction_enabled;
+    }
+
+    void record_energy_correction(const H &h, const W &wf, size_t iteration,
+                                  double initialization_seconds = 0.0)
     {
         if constexpr (W::NSTATES_val == 1) {
             const auto start = std::chrono::steady_clock::now();
-            auto pe = compute_energy_correction(h, wf, energy_correction_external,
-                                               energy_correction_gap_tolerance);
-            pe.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+            EnergyCorrectionResult pe;
+            if (wf.ip_enabled()) {
+                // PT2 remains on the existing incremental IP path. Its stored
+                // denominators are refreshed only when their rows change.
+                pe = wf.ip_correction_result(iteration);
+                if (energy_correction_olsen) {
+                    // Olsen is deliberately recomputed from the current E0 at
+                    // report time. The external PT2 sum is already supplied by
+                    // the incremental result above, so this pass only needs V.
+                    const auto olsen = compute_cached_internal_energy_correction(wf);
+                    pe.internal_correction = olsen.internal_correction;
+                    pe.internal_residual_norm = olsen.internal_residual_norm;
+                    pe.internal_valid = true;
+                    pe.valid = true;
+                    pe.status = "unchecked";
+                    pe.corrected_energy = pe.variational_energy +
+                                          pe.external_correction +
+                                          pe.internal_correction;
+                    pe.diagonal_evaluations += olsen.diagonal_evaluations;
+                }
+            } else {
+                // Fallback for wavefunction containers without IP accumulators.
+                pe = compute_energy_correction(h, wf, true, energy_correction_olsen);
+            }
+            pe.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() +
+                         initialization_seconds;
             pe.iteration = iteration;
             pe.compressed_z = z_threshold > 0;
             // H's diagonal and stored z use the same shifted energy origin.
             pe.variational_energy += h.get_shift();
-            if (pe.valid) pe.corrected_energy += h.get_shift();
+            pe.corrected_energy += h.get_shift();
             energy_correction_seconds += pe.seconds;
             ++energy_correction_evaluations;
             last_energy_correction = pe;
             if (energy_correction_store_history) energy_correction_history.push_back(pe);
-            // Normal snapshots are printed as part of the main progress table.
-            // Keep a diagnostic line only when the estimator cannot produce a
-            // valid value, so the NaN in the table has an actionable reason.
-            if (verbose > 0 && !pe.valid)
-                std::cout << "[Energy correction] iteration=" << iteration
-                          << " status=" << pe.status << std::endl;
         }
     }
 
-    std::pair<NumericalType, NumericalType>
+    std::array<NumericalType, 3>
     energy_correction_output(size_t iteration) const
     {
-        // The two columns remain present for stable, machine-readable output.
+        // The correction columns remain present for stable, machine-readable output.
         // A disabled estimator (or a report without a matching snapshot) is
         // represented by zeros as requested by the command-line workflow.
-        if (!energy_correction_enabled ||
+        if (!energy_correction_active() ||
             last_energy_correction.iteration != iteration)
-            return {0.0, 0.0};
+            return {0.0, 0.0, 0.0};
 
         return {last_energy_correction.external_correction,
+                last_energy_correction.internal_correction,
                 last_energy_correction.corrected_energy};
     }
 
@@ -295,11 +307,11 @@ public:
             std::cout << std::setw(13) << std::left << "Iteration";
             std::cout << std::setw(18) << std::right << "Energy";
             std::cout << std::setw(20) << "PT2";
-            std::cout << std::setw(20) << "E_corrected";
+            std::cout << std::setw(20) << "Olsen";
+            std::cout << std::setw(20) << "Ecorr";
             std::cout << std::setw(18) << "dx";
             std::cout << std::setw(15) << "|x|_0";
             std::cout << std::setw(15) << "|z|_0";
-            std::cout << std::setw(9) << "|H_i|_0";
             std::cout << std::setw(10) << "Time";
             std::cout << std::endl;
         }
@@ -310,7 +322,6 @@ public:
                              NumericalType dx,
                              size_t x_size,
                              size_t z_size,
-                             size_t H_i_size,
                              double time) = 0;
 
     virtual void initialize(H &h, W &vec_xz, wff_type &sub_xz) = 0;
@@ -354,8 +365,11 @@ public:
 
         // Initialize sub_xz
         wff_type sub_xz;
+        vec_xz.configure_ip_correction(false);
         if (vec_xz.size() == 0)
+        {
             initialize(h, vec_xz, sub_xz);
+        }
         else {
             // Copy everything in vec_xz to sub_xz
             auto move_wff_functor = [&](const auto& val) {
@@ -377,6 +391,24 @@ public:
             shift_value = curr_var_energy + 1.0;
             h.apply_shift(shift_value);
         }
+
+        double energy_correction_initialization_seconds = 0.0;
+        bool energy_correction_initialization_pending = false;
+        auto initialize_energy_correction = [&]() {
+            const auto start = std::chrono::steady_clock::now();
+            if constexpr (W::supports_ip_correction)
+                vec_xz.initialize_ip_correction(h, energy_correction_olsen);
+            energy_correction_initialization_seconds =
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+            energy_correction_initialization_pending = true;
+        };
+        if (energy_correction_active()) initialize_energy_correction();
+        auto record_current_energy_correction = [&](size_t at_iteration) {
+            const double initialization_seconds = energy_correction_initialization_pending
+                ? energy_correction_initialization_seconds : 0.0;
+            record_energy_correction(h, vec_xz, at_iteration, initialization_seconds);
+            energy_correction_initialization_pending = false;
+        };
 
         // Initialize stopping criterion
         NumericalType dx_accumulated = get_default_dx_accumulated();
@@ -416,9 +448,9 @@ public:
 
                 // Update the stopping criterion
                 early_stop = check_convergence(vec_xz, dx_accumulated, det_picked);
-                if (energy_correction_enabled &&
-                    (iterations % energy_correction_interval == 0 || early_stop))
-                    record_energy_correction(h, vec_xz, iterations);
+                if (energy_correction_active() &&
+                    (iterations % report_interval == 0 || early_stop))
+                    record_current_energy_correction(iterations);
                 if (early_stop) break;
 
                 // Check overflow to prevent the container to expand automatically
@@ -438,7 +470,6 @@ public:
                         dx_accumulated,
                         x_size,
                         xz_size,
-                        sub_xz.size(),
                         time_elpse.count());
 
             if (early_stop) break;
@@ -456,13 +487,9 @@ public:
             }
             last_xz_size = vec_xz.size_z();
         }
-        if (energy_correction_enabled && last_energy_correction.iteration != iterations)
-            record_energy_correction(h, vec_xz, iterations);
+        if (energy_correction_active() && last_energy_correction.iteration != iterations)
+            record_current_energy_correction(iterations);
         output_final(vec_xz, iterations);
-        if (energy_correction_enabled && verbose > 0)
-            std::cout << "Energy correction evaluations: " << energy_correction_evaluations
-                      << ", time: " << std::fixed << std::setprecision(6)
-                      << energy_correction_seconds << " s" << std::endl;
         timer.print_results();
 
         return 0;
@@ -676,7 +703,6 @@ public:
                      NumericalType dx,
                      size_t x_size,
                      size_t z_size,
-                     size_t H_i_size,
                      double time)
     {
         NumericalType reported_energy = vecmath::index(energy, 0);
@@ -699,14 +725,15 @@ public:
         }
         const auto correction = this->energy_correction_output(iteration);
         std::cout << std::setw(20) << std::scientific
-                  << std::setprecision(10) << correction.first;
+                  << std::setprecision(10) << correction[0];
+        std::cout << std::setw(20) << std::scientific
+                  << std::setprecision(10) << correction[1];
         std::cout << std::setw(20) << std::fixed
-                  << std::setprecision(10) << correction.second;
+                  << std::setprecision(10) << correction[2];
         std::cout << std::setw(18) << std::scientific
                   << std::setprecision(4)  << dx;
         std::cout << std::setw(15) << x_size;
         std::cout << std::setw(15) << z_size;
-        std::cout << std::setw(9)  << H_i_size;
         std::cout << std::setw(10) << std::fixed
                     << std::setprecision(2) << time;
         std::cout << std::endl;
@@ -852,7 +879,6 @@ public:
                      NumericalType dx,
                      size_t x_size,
                      size_t z_size,
-                     size_t H_i_size,
                      double time)
     {
         if (this->verbose == 0) return;
@@ -862,14 +888,15 @@ public:
                   << std::setprecision(10) << vecmath::index(energy, 0);
         const auto correction = this->energy_correction_output(iteration);
         std::cout << std::setw(20) << std::scientific
-                  << std::setprecision(10) << correction.first;
+                  << std::setprecision(10) << correction[0];
+        std::cout << std::setw(20) << std::scientific
+                  << std::setprecision(10) << correction[1];
         std::cout << std::setw(20) << std::fixed
-                  << std::setprecision(10) << correction.second;
+                  << std::setprecision(10) << correction[2];
         std::cout << std::setw(18) << std::scientific
                   << std::setprecision(4)  << dx;
         std::cout << std::setw(15) << x_size;
         std::cout << std::setw(15) << z_size;
-        std::cout << std::setw(9)  << H_i_size;
         std::cout << std::setw(10) << std::fixed
                   << std::setprecision(2) << time;
         std::cout << std::endl;

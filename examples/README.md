@@ -285,7 +285,8 @@ Each run prints several standard sections:
 | `Iteration` | iteration counter                                 |       |                                                                       |
 | `Energy`    | current variational energy estimate (Hartree)     |       |                                                                       |
 | `PT2`       | external-space perturbative energy correction; zero when disabled |
-| `E_corrected` | projected corrected energy; zero when disabled |
+| `Olsen`     | projected internal-space correction; requires PT2 |
+| `Ecorr`     | variational energy + PT2 + Olsen; zero when disabled |
 | `dx`        | update size / step norm used in stopping criteria |       |                                                                       |
 | `\|x\|_0` | number of non‑zero coefficients in wavefunction (determinant count)   |
 |`\|z\|_0` | number of non‑zero coefficients in Hx (determinant count)(candidates)                             |

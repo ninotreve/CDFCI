@@ -241,7 +241,6 @@ struct EnergyCorrectionResult {
     bool external_valid = false;
     bool valid = false;
     bool compressed_z = false;
-    std::string scope = "stored";
     std::string status = "not_evaluated";
     size_t diagonal_evaluations = 0;
     double seconds = 0.0;

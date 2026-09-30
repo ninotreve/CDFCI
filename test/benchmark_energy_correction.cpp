@@ -11,13 +11,13 @@ int run_benchmark(int argc, char **argv)
 {
     using Det = Determinant<N>;
 #ifdef CDFCI_SOLVER_SERIAL
-    using Container = ContainerRobinhood<Det, std::array<double, 2>,
+    using Container = ContainerRobinhood<Det, std::array<double, 3>,
                                          DeterminantHash<N>, DeterminantEqual<N>>;
 #else
-    using Container = ContainerCuckoo<Det, std::array<double, 2>,
+    using Container = ContainerCuckoo<Det, std::array<double, 3>,
                                       DeterminantHashRobinhood<N>, DeterminantEqual<N>>;
 #endif
-    using Wf = WaveFunction<Container>;
+    using Wf = WaveFunction<Container, 1, true>;
     using Ham = Hamiltonian<N>;
 
     const size_t iterations = std::stoull(argv[2]);
@@ -67,7 +67,8 @@ int run_benchmark(int argc, char **argv)
         opt["num_iterations"] = steps;
         opt["report_interval"] = std::min(interval, steps);
         opt["z_threshold"] = run_z_threshold;
-        opt["energy_correction"] = {{"enabled", enabled}, {"interval", interval},
+        opt["energy_correction"] = {{"enabled", enabled},
+                                    {"olsen_enabled", true},
                                     {"store_history", history}};
         CDFCISolver<Ham, Wf> solver(opt);
         Wf wf;

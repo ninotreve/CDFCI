@@ -41,6 +41,11 @@
 
 namespace vecmath {
 
+    template <typename T, typename R> void add_assign_first_half(std::array<T,3>& a,const R& r){if constexpr(std::is_same_v<R,T>)a[0]+=r;else a[0]+=r[0];}
+    template <typename T, typename R> void add_assign_second_half(std::array<T,3>& a,const R& r){if constexpr(std::is_same_v<R,T>)a[1]+=r;else a[1]+=r[0];}
+    template <typename T, typename R> void assign_first_half(std::array<T,3>& a,const R& r){if constexpr(std::is_same_v<R,T>)a[0]=r;else a[0]=r[0];}
+    template <typename T, typename R> void assign_second_half(std::array<T,3>& a,const R& r){if constexpr(std::is_same_v<R,T>)a[1]=r;else a[1]=r[0];}
+
     // Extend std::is_floating_point to include QUAD_PRECISION
     template <typename T>
     struct is_floating_point_ex : std::is_floating_point<T> {};
@@ -142,6 +147,7 @@ namespace vecmath {
     T slice_first_half(const std::array<T, 2>& arr) {
         return arr[0];
     }
+    template <typename T> T slice_first_half(const std::array<T,3>& a){return a[0];}
 
     // Slice second half
     template <typename T, size_t N>
@@ -157,6 +163,7 @@ namespace vecmath {
     T slice_second_half(const std::array<T, 2>& arr) {
         return arr[1];
     }
+    template <typename T> T slice_second_half(const std::array<T,3>& a){return a[1];}
 
     // Check if first half is zero
     template <typename T, size_t N>
@@ -170,6 +177,7 @@ namespace vecmath {
     bool is_zero_on_first_half(const std::array<T, 2>& arr) {
         return (arr[0] == 0);
     }
+    template <typename T> bool is_zero_on_first_half(const std::array<T,3>& a){return a[0]==0;}
 
     // Check if second half is zero
     template <typename T, size_t N>
@@ -183,6 +191,7 @@ namespace vecmath {
     bool is_zero_on_second_half(const std::array<T, 2>& arr) {
         return (arr[1] == 0);
     }
+    template <typename T> bool is_zero_on_second_half(const std::array<T,3>& a){return a[1]==0;}
 
     // index
     template <typename T>

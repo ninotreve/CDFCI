@@ -24,6 +24,7 @@
 #include <filesystem>
 
 #include "wavefunction.h"
+#include "ip_entry.h"
 
 // This class defines RDM
 template <typename W>
@@ -401,7 +402,7 @@ void RDM<W>::compute1RDM(W &vec_xz)
     auto time_start = std::chrono::high_resolution_clock::now();
     for (auto iter : vec_xz)
     {
-        auto itervalue = iter.second[0];
+        auto itervalue = vec_xz.stored_c(iter.first, iter.second);
         if (itervalue == 0)
             continue;
         auto det            = iter.first;
@@ -519,7 +520,7 @@ NumericalType RDM<W>::compute2RDMLin(W &vec_xz, int ntest)
 
     for (auto iter : vec_xz)
     {
-        auto itervalue = iter.second[0];
+        auto itervalue = vec_xz.stored_c(iter.first, iter.second);
         if (itervalue == 0)
             continue;
         cnt_x++;
@@ -701,7 +702,7 @@ NumericalType RDM<W>::compute2RDMSqr(W &vec_xz, int ntest)
 
     for (auto iter : vec_xz)
     {
-        auto itervalue = iter.second[0];
+        auto itervalue = vec_xz.stored_c(iter.first, iter.second);
         if (itervalue == 0)
             continue;
         sub_xz.push_back(iter.first, iter.second);
@@ -742,7 +743,7 @@ NumericalType RDM<W>::compute2RDMSqr(W &vec_xz, int ntest)
         for (auto lit = it_start; lit != it_end; ++lit)
         {
             auto ldet               = (*lit).first;
-            auto lval               = (*lit).second[0];
+            auto lval               = ipentry::c((*lit).second);
             auto occ_alpha_orbitals = ldet.get_occupied_alpha_orbitals();
             auto occ_beta_orbitals  = ldet.get_occupied_beta_orbitals();
             // aaaa
@@ -789,7 +790,7 @@ NumericalType RDM<W>::compute2RDMSqr(W &vec_xz, int ntest)
                 if (cnt > 4)
                     continue;
 
-                auto rval = (*rit).second[0];
+                auto rval = ipentry::c((*rit).second);
                 auto diff_occ_alpha_orbitals =
                     diff_det.get_occupied_alpha_orbitals();
                 auto diff_occ_beta_orbitals =
