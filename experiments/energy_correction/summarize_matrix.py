@@ -33,6 +33,8 @@ def main() -> None:
             "overshoot_points": summary["overshoot_points"],
             "invalid_correction_points": summary["invalid_correction_points"],
             "direct_relative_runtime_overhead": summary["direct_relative_runtime_overhead"],
+            "final_cumulative_trajectory_overhead":
+                summary["final_cumulative_trajectory_overhead"],
             "median_paired_runtime_overhead": summary["median_relative_runtime_overhead"],
         }
         systems.append(system_row)

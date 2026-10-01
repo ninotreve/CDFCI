@@ -16,6 +16,30 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 REFERENCE_RESOLUTION_FLOOR = 1e-7
+SUPPORTED_CORRECTION_STATUSES = {"ok", "unchecked"}
+
+
+def usable_correction_record(row: dict) -> bool:
+    """Accept legacy and current successful records, but reject NaN/Inf data."""
+    numeric_fields = (
+        "variational_energy",
+        "external_correction",
+        "internal_correction",
+        "corrected_energy",
+        "raw_wall_seconds",
+        "corrected_wall_seconds",
+        "correction_seconds",
+        "interval_total_seconds",
+        "interval_correction_overhead",
+        "cumulative_correction_overhead",
+        "interval_end_to_end_overhead",
+        "cumulative_end_to_end_overhead",
+    )
+    return (
+        row.get("status") in SUPPORTED_CORRECTION_STATUSES
+        and all(math.isfinite(float(row[field])) for field in numeric_fields)
+    )
+
 
 def first_crossing(rows: list[dict], key: str, tolerance: float) -> dict | None:
     return next((row for row in rows if float(row[key]) <= tolerance), None)
@@ -42,6 +66,8 @@ def main() -> None:
     reference = (stored_reference if args.reference_energy is None
                  else args.reference_energy)
     all_rows = []
+    previous_raw_wall_seconds = 0.0
+    previous_corrected_wall_seconds = 0.0
     for original in data["trajectory"]:
         row = dict(original)
         row["raw_error"] = abs(float(row["variational_energy"]) - reference)
@@ -51,8 +77,25 @@ def main() -> None:
             - reference
         )
         row["corrected_error"] = abs(float(row["corrected_energy"]) - reference)
+        raw_wall_seconds = float(row["raw_wall_seconds"])
+        corrected_wall_seconds = float(row["corrected_wall_seconds"])
+        raw_interval_seconds = raw_wall_seconds - previous_raw_wall_seconds
+        corrected_interval_seconds = (
+            corrected_wall_seconds - previous_corrected_wall_seconds
+        )
+        row["interval_end_to_end_overhead"] = (
+            (corrected_interval_seconds - raw_interval_seconds)
+            / corrected_interval_seconds
+            if corrected_interval_seconds > 0 else math.nan
+        )
+        row["cumulative_end_to_end_overhead"] = (
+            (corrected_wall_seconds - raw_wall_seconds) / corrected_wall_seconds
+            if corrected_wall_seconds > 0 else math.nan
+        )
+        previous_raw_wall_seconds = raw_wall_seconds
+        previous_corrected_wall_seconds = corrected_wall_seconds
         all_rows.append(row)
-    rows = [row for row in all_rows if row["status"] == "ok"]
+    rows = [row for row in all_rows if usable_correction_record(row)]
     if not rows:
         raise RuntimeError("large-scale trajectory has no valid correction records")
     reference_run = data.get("reference_run") or {}
@@ -91,7 +134,8 @@ def main() -> None:
         "variational_energy", "corrected_energy", "raw_error", "corrected_error",
         "raw_wall_seconds", "corrected_wall_seconds", "correction_seconds",
         "interval_total_seconds", "interval_correction_overhead",
-        "cumulative_correction_overhead", "hamiltonian_columns", "status",
+        "cumulative_correction_overhead", "interval_end_to_end_overhead",
+        "cumulative_end_to_end_overhead", "hamiltonian_columns", "status",
     )
     with (args.output / "05_trajectory.csv").open(
             "w", newline="", encoding="utf-8") as handle:
@@ -139,6 +183,10 @@ def main() -> None:
         "first_overshoot_iteration": overshoots[0]["iteration"] if overshoots else None,
         "median_relative_runtime_overhead": statistics.median(overheads) if overheads else None,
         "paired_relative_runtime_overheads": overheads,
+        "trajectory_overhead_definition": (
+            "(corrected wall time - raw wall time) / corrected wall time"),
+        "final_cumulative_trajectory_overhead":
+            float(rows[-1]["cumulative_end_to_end_overhead"]),
         "direct_correction_seconds": correction_seconds,
         "direct_relative_runtime_overhead": (
             correction_seconds / parent_seconds if parent_seconds > 0 else None),
@@ -178,12 +226,12 @@ def main() -> None:
 
     axes[2].semilogx(
         wavefunction_size,
-        [float(row["interval_correction_overhead"]) for row in rows],
+        [float(row["cumulative_end_to_end_overhead"]) for row in rows],
         "-", linewidth=1.5, color="tab:green")
     axes[2].set_title("C. Correction overhead", loc="left")
     axes[2].set(
         xlabel="stored wavefunction entries",
-        ylabel="correction time / interval total time",
+        ylabel="cumulative (corrected - raw) / corrected time",
     )
     for ax in axes:
         ax.grid(True, which="both", alpha=0.25)
