@@ -1,0 +1,14 @@
+{
+  "mode": "large",
+  "benchmark_systems": [
+    "c2_ccpvdz"
+  ],
+  "git_commit": "0a0e7e84f1336d4ebd8da4a1a1b63714142e689e",
+  "job_id": "988519",
+  "node": "bigMem5",
+  "python": "3.10.12",
+  "openmp_threads": 64,
+  "slurm_cpus_per_task": "64",
+  "slurm_submit_dir": "/home/yjzhang/codes/cdfci/perturbation/CDFCI",
+  "output_root": "/home/yjzhang/codes/cdfci/perturbation/CDFCI/experiment_results/energy_correction/988519"
+}

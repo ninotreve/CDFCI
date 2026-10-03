@@ -1,0 +1,59 @@
+CDFCI energy-correction experiment suite
+mode=baseline2
+project=/home/yjzhang/codes/cdfci/perturbation/CDFCI
+output=/home/yjzhang/codes/cdfci/perturbation/CDFCI/experiment_results/energy_correction/990772
+openmp_threads=64
+slurm_submit_dir=/home/yjzhang/codes/cdfci/perturbation/CDFCI
+started=2026-10-02 11:43:30 +0000
+numpy 2.1.1 matplotlib 3.10.0
+-- Eigen3 was not found; fetching Eigen 3.4.0
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/yjzhang/codes/cdfci/perturbation/CDFCI/build_experiments
+Consolidate compiler generated dependencies of target cdfci_energy_correction_benchmark_omp
+[100%] Built target cdfci_energy_correction_benchmark_omp
+system=c2_ccpvdz fcidump=/home/yjzhang/codes/cdfci/perturbation/CDFCI/data/c2_ccpvdz_psi4.FCIDUMP iterations=800000 reference_energy=-75.7319603747 benchmark_mode=ip-only
+Saved IP-only baseline2: /home/yjzhang/codes/cdfci/perturbation/CDFCI/experiment_results/energy_correction/990772/c2_ccpvdz/05_ip_only.json
+{
+  "ip_seconds": 4692.681528611,
+  "ip_olsen_seconds": 5848.359377546,
+  "olsen_extra_wall_seconds": 1155.677848935,
+  "olsen_relative_overhead": 0.24627238006434077,
+  "overhead_definition": "(IP+Olsen total seconds - IP total seconds) / IP total seconds",
+  "ip_report_seconds": 0.00019658199999999997,
+  "ip_olsen_report_seconds": 871.6161920800002,
+  "report_timer_difference_seconds": 871.6159954980003,
+  "trajectory_points": 80,
+  "max_variational_energy_difference_hartree": 6.4102749774974654e-09,
+  "target_tolerances": [
+    {
+      "tolerance_hartree": 0.0001,
+      "ip_iteration": 10000,
+      "ip_olsen_iteration": 10000,
+      "ip_seconds": 63.205092717,
+      "ip_olsen_seconds": 66.516360055,
+      "wall_time_speedup": 0.9502187531719709
+    },
+    {
+      "tolerance_hartree": 1e-05,
+      "ip_iteration": 50000,
+      "ip_olsen_iteration": 30000,
+      "ip_seconds": 306.799034975,
+      "ip_olsen_seconds": 195.470265722,
+      "wall_time_speedup": 1.569543244041695
+    },
+    {
+      "tolerance_hartree": 1e-06,
+      "ip_iteration": 220000,
+      "ip_olsen_iteration": 110000,
+      "ip_seconds": 1311.446313347,
+      "ip_olsen_seconds": 713.629735155,
+      "wall_time_speedup": 1.8377125401902632
+    }
+  ],
+  "timing_note": "One run per variant; cross-job differences also include node load and OpenMP variation. Report timers exclude per-update cache maintenance.",
+  "ip_input": "/home/yjzhang/codes/cdfci/perturbation/CDFCI/experiment_results/energy_correction/990772/c2_ccpvdz/05_ip_only.json",
+  "ip_olsen_input": "/home/yjzhang/codes/cdfci/perturbation/CDFCI/experiment_results/energy_correction/988519/c2_ccpvdz/05_large_scale_with_timings.json"
+}
+finished=2026-10-02 13:02:45 +0000
+results=/home/yjzhang/codes/cdfci/perturbation/CDFCI/experiment_results/energy_correction/990772

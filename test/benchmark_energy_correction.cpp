@@ -29,8 +29,9 @@ int run_benchmark(int argc, char **argv)
     const std::string reference_argument = argv[4];
     const std::string mode = argc >= 7 ? argv[6] : "timed";
     const bool trajectory_only = mode == "trajectory-only";
-    if (mode != "timed" && !trajectory_only) {
-        std::cerr << "The optional mode must be timed or trajectory-only\n";
+    const bool ip_only = mode == "ip-only";
+    if (mode != "timed" && !trajectory_only && !ip_only) {
+        std::cerr << "The optional mode must be timed, trajectory-only, or ip-only\n";
         return 1;
     }
     const double z_threshold = argc >= 8 ? std::stod(argv[7]) : 1e-3;
@@ -46,6 +47,10 @@ int run_benchmark(int argc, char **argv)
         return 1;
     }
     const bool automatic_reference = reference_argument == "auto";
+    if (ip_only && automatic_reference) {
+        std::cerr << "ip-only mode requires a supplied reference energy\n";
+        return 1;
+    }
     if (automatic_reference && reference_iterations <= iterations) {
         std::cerr << "automatic reference_iterations must exceed trajectory iterations\n";
         return 1;
@@ -68,7 +73,7 @@ int run_benchmark(int argc, char **argv)
         opt["report_interval"] = std::min(interval, steps);
         opt["z_threshold"] = run_z_threshold;
         opt["energy_correction"] = {{"enabled", enabled},
-                                    {"olsen_enabled", true},
+                                    {"olsen_enabled", !ip_only},
                                     {"store_history", history}};
         CDFCISolver<Ham, Wf> solver(opt);
         Wf wf;
@@ -109,6 +114,39 @@ int run_benchmark(int argc, char **argv)
 
     if (!trajectory_only)
         run(false, false, std::min<size_t>(iterations, 200), z_threshold); // warm caches
+
+    // baseline2 measures IP/PT2 alone, including its incremental maintenance.
+    // It does not repeat the already available raw and IP+Olsen trajectories.
+    if (ip_only) {
+        auto trajectory = run(true, true, iterations, z_threshold);
+        std::cout.rdbuf(original);
+        Option records = Option::array();
+        size_t index = 0;
+        for (const auto &pe : trajectory.first.energy_correction_history) {
+            records.push_back({{"iteration", pe.iteration},
+                               {"variational_energy", pe.variational_energy},
+                               {"external_correction", pe.external_correction},
+                               {"internal_correction", pe.internal_correction},
+                               {"corrected_energy", pe.corrected_energy},
+                               {"status", pe.status},
+                               {"wall_seconds", trajectory.first.time_history.at(index)},
+                               {"correction_seconds", pe.seconds},
+                               {"stored_determinants", trajectory.first.x_size_history.at(index)},
+                               {"stored_wavefunction_entries", trajectory.first.z_size_history.at(index)},
+                               {"hamiltonian_columns", trajectory.first.hamiltonian_columns_history.at(index)}});
+            ++index;
+        }
+        Option output = {{"benchmark_mode", mode}, {"fcidump", argv[1]},
+                         {"spin_orbitals", ham->norb}, {"electrons", ham->nelec},
+                         {"ms2", ham->ms2}, {"determinant_words", N},
+                         {"reference_energy", reference}, {"options", opt},
+                         {"trajectory_run", trajectory.second}, {"trajectory", records}};
+        std::ofstream file(argv[5]);
+        file << output.dump(2) << '\n';
+        if (!file) return 2;
+        std::cout << "Saved IP-only baseline2: " << argv[5] << '\n';
+        return 0;
+    }
 
     // These runs provide both trajectories and the first wall-time pair. This
     // avoids two redundant production-scale solves from the old benchmark.
@@ -205,7 +243,7 @@ int main(int argc, char **argv)
     if (argc < 6 || argc > 13) {
         std::cerr
             << "Usage: benchmark_energy_correction FCIDUMP iterations interval "
-               "reference_energy|auto output.json [timed|trajectory-only "
+               "reference_energy|auto output.json [timed|trajectory-only|ip-only "
                "[z_threshold [max_wavefunction_size [num_coordinates "
                "[timing_repeats [reference_iterations [reference_z_threshold]]]]]]]]\n";
         return 1;

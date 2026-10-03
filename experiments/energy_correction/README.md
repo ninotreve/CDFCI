@@ -1,5 +1,10 @@
 # Energy-correction paper experiments
 
+Completed C2/N2 runs, figures, timing ablations, and paper-ready findings are
+indexed in [RESULTS.md](RESULTS.md), including limitations of the "almost free"
+claim. Only the four completed production result directories are versioned;
+local tests, other runs, build files, and new FCIDUMP files remain ignored.
+
 This directory turns every TODO in the companion paper's
 [`sections/04_numerical_results.tex`](../../../paper/sections/04_numerical_results.tex)
 into a reproducible batch workflow. Submit from the CDFCI project root with:
@@ -8,11 +13,13 @@ into a reproducible batch workflow. Submit from the CDFCI project root with:
 sbatch experiments/energy_correction/run_all.sbatch
 ```
 
-The production profile runs on the `bigMem3` node for at most 18 hours,
+The production profile runs on the `bigMem5` node for at most 18 hours,
 requests 64 CPU cores and 96 GB, and does not request an exclusive node. OpenMP
 threads are bound to physical cores. The default output is
 `experiment_results/energy_correction/<job-id>/`. Use `small` or `large` as the
-optional first argument to run only experiments 1--4 or experiment 5. For
+optional first argument to run only experiments 1--4 or experiment 5. The
+`baseline2` mode runs IP/PT2 only (`enabled=true`, `olsen_enabled=false`) once
+per system, with the same production parameters and warm-up as `large`. For
 the inexpensive experiments 1--4 without a whole-node allocation, use:
 
 ```bash
@@ -28,6 +35,27 @@ sbatch --job-name=cdfci_c2_corr --export=ALL,CDFCI_BENCHMARK_SYSTEMS=c2_ccpvdz \
 sbatch --job-name=cdfci_n2_corr --export=ALL,CDFCI_BENCHMARK_SYSTEMS=n2_ccpvdz \
   experiments/energy_correction/run_all.sbatch large
 ```
+
+To measure the marginal cost of Olsen using an existing IP+Olsen JSON, submit
+each system separately. Replace the JSON path below with that system's previous
+`05_large_scale_with_timings.json`:
+
+```bash
+sbatch --job-name=cdfci_c2_ip \
+  --export=ALL,CDFCI_BENCHMARK_SYSTEMS=c2_ccpvdz,CDFCI_IP_OLSEN_REFERENCE_JSON=/absolute/path/to/c2/05_large_scale_with_timings.json \
+  experiments/energy_correction/run_all.sbatch baseline2
+sbatch --job-name=cdfci_n2_ip \
+  --export=ALL,CDFCI_BENCHMARK_SYSTEMS=n2_ccpvdz,CDFCI_IP_OLSEN_REFERENCE_JSON=/absolute/path/to/n2/05_large_scale_with_timings.json \
+  experiments/energy_correction/run_all.sbatch baseline2
+```
+
+`05_ip_only.json` retains the IP-only trajectory and complete solve time.
+`06_ip_olsen_summary.json`, CSV, PDF, and PNG compare matched iterations and
+compute `(IP+Olsen time - IP time) / IP time`, including Olsen's internal-cache
+maintenance. Configuration and Hamiltonian work must match. The report timer
+difference is also exported, but excludes per-update maintenance. Cross-job
+timings are single measurements and can be affected by node load; they should
+not alone establish that Olsen is "almost free".
 
 
 ## Experiment map

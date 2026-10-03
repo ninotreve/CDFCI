@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -w bigMem3
+#SBATCH -w bigMem5
 #SBATCH -N 1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=64
@@ -19,8 +19,8 @@ PROJECT_DIR="${CDFCI_PROJECT_DIR:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 MODE="${1:-all}"
 case "${MODE}" in
-    all|small|large) ;;
-    *) echo "Usage: sbatch $0 [all|small|large]" >&2; exit 2 ;;
+    all|small|large|baseline2) ;;
+    *) echo "Usage: sbatch $0 [all|small|large|baseline2]" >&2; exit 2 ;;
 esac
 
 if [[ -f /public3/soft/modules/module.sh ]]; then
@@ -65,7 +65,7 @@ if [[ "${MODE}" = all || "${MODE}" = small ]]; then
         --output "${OUTPUT_ROOT}/small"
 fi
 
-if [[ "${MODE}" = all || "${MODE}" = large ]]; then
+if [[ "${MODE}" = all || "${MODE}" = large || "${MODE}" = baseline2 ]]; then
     BUILD_DIR="${CDFCI_EXPERIMENT_BUILD_DIR:-${PROJECT_DIR}/build_experiments}"
 
     cmake_args=(
@@ -166,8 +166,13 @@ PY
         fi
 
         TIMING_JSON="${SYSTEM_OUTPUT}/05_large_scale_with_timings.json"
+        BENCHMARK_MODE=timed
+        if [[ "${MODE}" = baseline2 ]]; then
+            TIMING_JSON="${SYSTEM_OUTPUT}/05_ip_only.json"
+            BENCHMARK_MODE=ip-only
+        fi
 
-        echo "system=${SYSTEM} fcidump=${FCIDUMP} iterations=${ITERATIONS} reference_energy=${REFERENCE_ENERGY}"
+        echo "system=${SYSTEM} fcidump=${FCIDUMP} iterations=${ITERATIONS} reference_energy=${REFERENCE_ENERGY} benchmark_mode=${BENCHMARK_MODE}"
 
         srun --ntasks=1 \
             --cpus-per-task="${OMP_NUM_THREADS}" \
@@ -178,26 +183,38 @@ PY
             "${INTERVAL}" \
             "${REFERENCE_ENERGY}" \
             "${TIMING_JSON}" \
-            timed \
+            "${BENCHMARK_MODE}" \
             "${Z_THRESHOLD}" \
             "${MAX_WAVEFUNCTION_SIZE}" \
             "${NUM_COORDINATES}" \
             "${TIMING_REPEATS}"
 
-        srun --ntasks=1 --cpus-per-task=1 \
-            python3 experiments/energy_correction/summarize_large_scale.py \
-            "${TIMING_JSON}" \
-            "${SYSTEM_OUTPUT}"
+        if [[ "${MODE}" = baseline2 ]]; then
+            if [[ -n "${CDFCI_IP_OLSEN_REFERENCE_JSON:-}" ]]; then
+                srun --ntasks=1 --cpus-per-task=1 \
+                    python3 experiments/energy_correction/compare_ip_olsen.py \
+                    "${TIMING_JSON}" "${CDFCI_IP_OLSEN_REFERENCE_JSON}" \
+                    "${SYSTEM_OUTPUT}"
+            fi
+        else
+            srun --ntasks=1 --cpus-per-task=1 \
+                python3 experiments/energy_correction/summarize_large_scale.py \
+                "${TIMING_JSON}" \
+                "${SYSTEM_OUTPUT}"
+        fi
     done
 
-    srun --ntasks=1 --cpus-per-task=1 \
-        python3 experiments/energy_correction/summarize_matrix.py \
-        "${OUTPUT_ROOT}" \
-        "${BENCHMARK_SYSTEMS[@]}"
+    if [[ "${MODE}" != baseline2 ]]; then
+        srun --ntasks=1 --cpus-per-task=1 \
+            python3 experiments/energy_correction/summarize_matrix.py \
+            "${OUTPUT_ROOT}" \
+            "${BENCHMARK_SYSTEMS[@]}"
+    fi
 fi
 
 python3 - "${OUTPUT_ROOT}" "${MODE}" "${MANIFEST_SYSTEMS[*]}" <<'PY'
 import json
+import hashlib
 import os
 import platform
 import subprocess
@@ -225,6 +242,12 @@ manifest = {
     "slurm_cpus_per_task": os.environ.get("SLURM_CPUS_PER_TASK"),
     "slurm_submit_dir": os.environ.get("SLURM_SUBMIT_DIR"),
     "output_root": str(root),
+    "ip_olsen_reference_json": os.environ.get("CDFCI_IP_OLSEN_REFERENCE_JSON"),
+    "source_sha256": {
+        path: hashlib.sha256(Path(path).read_bytes()).hexdigest()
+        for path in ("test/benchmark_energy_correction.cpp", "include/solver.h",
+                     "include/wavefunction.h", "include/energy_correction.h")
+    },
 }
 
 (root / "manifest.json").write_text(

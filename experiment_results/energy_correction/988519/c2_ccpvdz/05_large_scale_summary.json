@@ -1,0 +1,77 @@
+{
+  "fcidump": "/home/yjzhang/codes/cdfci/perturbation/CDFCI/data/c2_ccpvdz_psi4.FCIDUMP",
+  "spatial_orbitals": 28,
+  "spin_orbitals": 56,
+  "electrons": 12,
+  "fixed_ms_determinant_dimension": "141933027600",
+  "reference_energy": -75.7319603747,
+  "reference_kind": "supplied",
+  "trajectory_stored_reference_energy": -75.7319603747,
+  "reference_iterations": null,
+  "reference_tail_energy_change": null,
+  "trajectory_points": 80,
+  "plot_reference_resolution_floor_hartree": 1e-07,
+  "invalid_correction_points": 0,
+  "improved_point_fraction": 1.0,
+  "overshoot_points": 19,
+  "first_overshoot_iteration": 620000,
+  "median_relative_runtime_overhead": 0.22936067747545302,
+  "paired_relative_runtime_overheads": [
+    0.22936067747545302
+  ],
+  "trajectory_overhead_definition": "(corrected wall time - raw wall time) / corrected wall time",
+  "final_cumulative_trajectory_overhead": 0.18769023000431623,
+  "direct_correction_seconds": 871.6161920800002,
+  "direct_relative_runtime_overhead": 0.17513786819972027,
+  "max_paired_variational_energy_difference": 3.3279832223342964e-09,
+  "target_tolerances": [
+    {
+      "tolerance_hartree": 0.001,
+      "raw_iteration": 10000,
+      "corrected_iteration": 10000,
+      "raw_hamiltonian_columns": 639937,
+      "corrected_hamiltonian_columns": 639937,
+      "raw_wall_seconds": 63.500053591,
+      "corrected_wall_seconds": 66.516360055,
+      "iteration_speedup": 1.0,
+      "wall_time_speedup": 0.9546531641011935,
+      "reference_tail_below_tenth_tolerance": "unknown"
+    },
+    {
+      "tolerance_hartree": 0.0001,
+      "raw_iteration": 40000,
+      "corrected_iteration": 10000,
+      "raw_hamiltonian_columns": 2559937,
+      "corrected_hamiltonian_columns": 639937,
+      "raw_wall_seconds": 248.914207363,
+      "corrected_wall_seconds": 66.516360055,
+      "iteration_speedup": 4.0,
+      "wall_time_speedup": 3.742150159106447,
+      "reference_tail_below_tenth_tolerance": "unknown"
+    },
+    {
+      "tolerance_hartree": 1e-05,
+      "raw_iteration": 190000,
+      "corrected_iteration": 30000,
+      "raw_hamiltonian_columns": 12159937,
+      "corrected_hamiltonian_columns": 1919937,
+      "raw_wall_seconds": 1156.274453679,
+      "corrected_wall_seconds": 195.470265722,
+      "iteration_speedup": 6.333333333333333,
+      "wall_time_speedup": 5.915347019190461,
+      "reference_tail_below_tenth_tolerance": "unknown"
+    },
+    {
+      "tolerance_hartree": 1e-06,
+      "raw_iteration": 730000,
+      "corrected_iteration": 110000,
+      "raw_hamiltonian_columns": 46719937,
+      "corrected_hamiltonian_columns": 7039937,
+      "raw_wall_seconds": 4319.553849655,
+      "corrected_wall_seconds": 713.629735155,
+      "iteration_speedup": 6.636363636363637,
+      "wall_time_speedup": 6.052934227462922,
+      "reference_tail_below_tenth_tolerance": "unknown"
+    }
+  ]
+}

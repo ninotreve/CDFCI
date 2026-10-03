@@ -1,0 +1,21 @@
+{
+  "mode": "baseline2",
+  "benchmark_systems": [
+    "c2_ccpvdz"
+  ],
+  "git_commit": "0a0e7e84f1336d4ebd8da4a1a1b63714142e689e",
+  "job_id": "990772",
+  "node": "bigMem5",
+  "python": "3.10.12",
+  "openmp_threads": 64,
+  "slurm_cpus_per_task": "64",
+  "slurm_submit_dir": "/home/yjzhang/codes/cdfci/perturbation/CDFCI",
+  "output_root": "/home/yjzhang/codes/cdfci/perturbation/CDFCI/experiment_results/energy_correction/990772",
+  "ip_olsen_reference_json": "/home/yjzhang/codes/cdfci/perturbation/CDFCI/experiment_results/energy_correction/988519/c2_ccpvdz/05_large_scale_with_timings.json",
+  "source_sha256": {
+    "test/benchmark_energy_correction.cpp": "78513b088332457d27d9ccfa8d1b5e4bf396131df1b5d358b35ce306494f5cbb",
+    "include/solver.h": "9faa4eb3fdff783f3dbfddfab6c5c8a4711f7a17410854f4527e63f9cb707ff9",
+    "include/wavefunction.h": "c19d02d83817097a289644a933dcd4462d70d78704f9afb1d5cad872d7b41d04",
+    "include/energy_correction.h": "67e886888ccec09c5f90b07e1808fbbe448138c92561d4dc5814a282834b4e92"
+  }
+}

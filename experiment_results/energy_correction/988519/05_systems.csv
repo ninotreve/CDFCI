@@ -1,0 +1,2 @@
+system,spatial_orbitals,spin_orbitals,electrons,fixed_ms_determinant_dimension,reference_energy,reference_iterations,reference_tail_energy_change,improved_point_fraction,overshoot_points,invalid_correction_points,direct_relative_runtime_overhead,final_cumulative_trajectory_overhead,median_paired_runtime_overhead
+c2_ccpvdz,28,56,12,141933027600,-75.7319603747,,,1.0,19,0,0.17513786819972027,0.18769023000431623,0.22936067747545302
