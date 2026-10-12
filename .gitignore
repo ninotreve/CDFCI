@@ -24,8 +24,10 @@ _cdfci*.so
 !cdfci_pe_988520.out
 !cdfci_pe_990772.out
 !cdfci_pe_990773.out
+!cdfci_three_way_1007783.out
+!cdfci_three_way_1007784.out
 
-# Keep local/test runs ignored; publish only the four completed paper runs.
+# Keep local/test runs ignored; publish only the six completed paper runs.
 /experiment_results/*
 !/experiment_results/energy_correction/
 /experiment_results/energy_correction/*
@@ -33,4 +35,6 @@ _cdfci*.so
 !/experiment_results/energy_correction/988520/
 !/experiment_results/energy_correction/990772/
 !/experiment_results/energy_correction/990773/
+!/experiment_results/energy_correction/1007783/
+!/experiment_results/energy_correction/1007784/
 *.log

@@ -2,8 +2,32 @@
 
 Completed C2/N2 runs, figures, timing ablations, and paper-ready findings are
 indexed in [RESULTS.md](RESULTS.md), including limitations of the "almost free"
-claim. Only the four completed production result directories are versioned;
+claim. The latest parallel-Olsen three-way results are documented in
+[RESULTS_PARALLEL.md](RESULTS_PARALLEL.md): C2 job `1007783` and N2 job
+`1007784`, with full-solve Olsen overheads of 5.14% and 23.21% over IP-only.
+Only the six completed production result directories are versioned;
 local tests, other runs, build files, and new FCIDUMP files remain ignored.
+
+For a new same-node raw / IP-only / parallel IP+Olsen comparison on this
+cluster's `partition` partition, use `run_three_way.sbatch`. It keeps the
+previous 64-thread, 64-coordinate production settings, requests 96 GiB and
+18 hours on bigMem5 without exclusive allocation, and runs all three variants
+within one job per molecule. Build the latest OpenMP benchmark first:
+
+```bash
+cmake --build build_experiments --target cdfci_energy_correction_benchmark_omp --parallel 4
+sbatch --job-name=cdfci_c2_three_way experiments/energy_correction/run_three_way.sbatch c2_ccpvdz
+sbatch --job-name=cdfci_n2_three_way experiments/energy_correction/run_three_way.sbatch n2_ccpvdz
+```
+
+The execution order is raw, IP+Olsen, then IP-only, using a fresh wavefunction
+for every solve. All variants use live reporting. Outputs include the original
+JSON trajectories, `runtime_summary.csv` / JSON with all three solve times,
+the existing raw/corrected and IP/Olsen comparison plots, and an early-written
+manifest containing binary/source SHA256 hashes and exact solver parameters.
+`CDFCI_BENCHMARK_APP` can select a frozen binary for reproducible queued jobs.
+Olsen's incremental overhead is `(T_IP+Olsen - T_IP) / T_IP`; each variant has
+one full measurement, so node activity and run order can still affect timings.
 
 This directory turns every TODO in the companion paper's
 [`sections/04_numerical_results.tex`](../../../paper/sections/04_numerical_results.tex)

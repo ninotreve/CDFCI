@@ -1,0 +1,33 @@
+{
+  "mode": "three-way-parallel-olsen",
+  "benchmark_systems": [
+    "n2_ccpvdz"
+  ],
+  "git_commit": "cd303323969b01b5657d7fa1050e8a82b89d7541",
+  "job_id": "1007784",
+  "node": "bigMem5",
+  "partition": "partition",
+  "openmp_threads": 64,
+  "omp_proc_bind": "spread",
+  "omp_places": "cores",
+  "benchmark_app": "/home/yjzhang/codes/cdfci/perturbation/CDFCI/build_experiments/three-way-cd30332.Ed4053/cdfci_energy_correction_benchmark_omp",
+  "binary_sha256": "5c4569b9b1ceb137e312e519e7f9fbff978d22fbe651114ab8888819535655a8",
+  "num_iterations": 2200000,
+  "report_interval": 10000,
+  "z_threshold": 5e-07,
+  "max_wavefunction_size": 848256040,
+  "num_coordinates": 64,
+  "live_reports": true,
+  "execution_order": [
+    "raw",
+    "ip+olsen",
+    "ip"
+  ],
+  "source_sha256": {
+    "test/benchmark_energy_correction.cpp": "d45400b7adfd233ed53d50af67e842d1d11ebb619c757eb0031891fa3f216651",
+    "include/energy_correction.h": "524843606a88d8b45677528cabbee2334458e4a2817ac9d3a8445119f4edf9f2",
+    "include/wavefunction.h": "c6d381545b9e043bfe718ea3e726c7c77d335ce10cd20ac383996414fb35c0cb",
+    "include/solver.h": "9faa4eb3fdff783f3dbfddfab6c5c8a4711f7a17410854f4527e63f9cb707ff9",
+    "experiments/energy_correction/run_three_way.sbatch": "70afb618e3359dd50215103d9a1d855d122a6f73b5d09e56b9df9d7a254488f7"
+  }
+}
