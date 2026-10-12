@@ -376,6 +376,28 @@ protected:
     // Insertions finish before parallel b updates start; concurrent lookups
     // are const. Flat storage avoids a separately allocated node per V row.
     robin_hood::unordered_flat_map<key_type, size_t, hasher, key_equal> ip_internal_index_;
+    struct alignas(64) PendingInternalRows {
+        std::vector<key_type> keys;
+    };
+    // Each thread appends to its own buffer while holding the main table's
+    // per-key lock. The entry's marker deduplicates updates across threads.
+    std::vector<PendingInternalRows> ip_pending_internal_;
+    size_t ip_internal_b_refreshes_ = 0;
+    size_t ip_peak_pending_internal_rows_ = 0;
+
+    void prepare_ip_pending_buffers()
+    {
+        if constexpr (stores_full_hii) {
+            if (!ip_internal_cache_enabled_) return;
+            size_t threads = 1;
+#if defined(_OPENMP) && !defined(CDFCI_SOLVER_SERIAL)
+            threads = static_cast<size_t>(omp_get_max_threads());
+#endif
+            // Called only before entering the coordinate update's parallel region.
+            if (ip_pending_internal_.size() < threads)
+                ip_pending_internal_.resize(threads);
+        }
+    }
 
     bool is_internal(const key_type &det, const mapped_type &val) const
     {
@@ -429,6 +451,22 @@ protected:
         ip_internal_rows_[it->second].b = b;
     }
 
+    void queue_ip_internal_b(const key_type &det, mapped_type &val)
+    {
+        if constexpr (stores_full_hii) {
+            if (ipentry::olsen_pending(val)) return;
+            size_t thread = 0;
+#if defined(_OPENMP) && !defined(CDFCI_SOLVER_SERIAL)
+            thread = static_cast<size_t>(omp_get_thread_num());
+#endif
+            ip_pending_internal_[thread].keys.push_back(det);
+            ipentry::mark_olsen_pending(val);
+        } else {
+            // Legacy two-slot IP storage has no spare metadata state.
+            sync_ip_internal_b(det, ipentry::b(val));
+        }
+    }
+
 public:
     /* Constructors */
     WaveFunction(){}
@@ -453,10 +491,79 @@ public:
         ip_diagonal_evaluations_ = 0;
         ip_internal_rows_.clear();
         ip_internal_index_.clear();
+        ip_pending_internal_.clear();
+        ip_internal_b_refreshes_ = 0;
+        ip_peak_pending_internal_rows_ = 0;
+    }
+
+    size_t pending_ip_internal_rows() const
+    {
+        size_t count = 0;
+        for (const auto &buffer : ip_pending_internal_) count += buffer.keys.size();
+        return count;
+    }
+
+    size_t ip_internal_b_refreshes() const { return ip_internal_b_refreshes_; }
+    size_t ip_peak_pending_internal_rows() const { return ip_peak_pending_internal_rows_; }
+
+    void refresh_ip_internal_rows()
+    {
+        if constexpr (stores_full_hii) {
+            if (!ip_internal_cache_enabled_) return;
+            const size_t count = pending_ip_internal_rows();
+            if (count == 0) return;
+            struct Chunk {
+                const std::vector<key_type> *keys;
+                size_t begin, end;
+            };
+            std::vector<Chunk> chunks;
+            constexpr size_t chunk_size = 4096;
+            for (const auto &buffer : ip_pending_internal_) {
+                for (size_t begin = 0; begin < buffer.keys.size(); begin += chunk_size)
+                    chunks.push_back({&buffer.keys, begin,
+                                      std::min(begin + chunk_size, buffer.keys.size())});
+            }
+            const auto &index = ip_internal_index_;
+            size_t missing = 0;
+#if defined(_OPENMP) && !defined(CDFCI_SOLVER_SERIAL)
+#pragma omp parallel for schedule(dynamic) if(count >= chunk_size) reduction(+:missing)
+#endif
+            for (size_t chunk = 0; chunk < chunks.size(); ++chunk) {
+                const auto &work = chunks[chunk];
+                for (size_t i = work.begin; i < work.end; ++i) {
+                    const auto &det = (*work.keys)[i];
+                    const auto it = index.find(det);
+                    if (it == index.end()) {
+                        ++missing;
+                        continue;
+                    }
+                    // Main c, b and H_ii are unchanged; only the derived row
+                    // and its metadata marker are synchronized at report time.
+                    if (!update_fn(data_, det, [&](mapped_type &val) {
+                            ip_internal_rows_[it->second].b = ipentry::b(val);
+                            ipentry::clear_olsen_pending(val);
+                            return false;
+                        })) ++missing;
+                }
+            }
+            if (missing != 0)
+                throw std::logic_error("Pending internal correction row is missing");
+            for (auto &buffer : ip_pending_internal_) buffer.keys.clear();
+            ip_internal_b_refreshes_ += count;
+            ip_peak_pending_internal_rows_ = std::max(ip_peak_pending_internal_rows_, count);
+        }
+    }
+
+    const std::vector<InternalCorrectionRow> &ip_internal_rows()
+    {
+        refresh_ip_internal_rows();
+        return ip_internal_rows_;
     }
 
     const std::vector<InternalCorrectionRow> &ip_internal_rows() const
     {
+        if (pending_ip_internal_rows() != 0)
+            throw std::logic_error("Refresh internal correction rows before reading a const cache");
         return ip_internal_rows_;
     }
 
@@ -479,6 +586,7 @@ public:
     {
         configure_ip_correction(true);
         ip_internal_cache_enabled_ = cache_internal;
+        prepare_ip_pending_buffers();
         if constexpr (NSTATES == 1 && supports_ip_correction) {
             const QUAD_PRECISION norm = this->get_xx();
             if (!(norm > 0) || !std::isfinite(static_cast<double>(norm))) {
@@ -718,7 +826,7 @@ public:
                 new_element = is_zero_on_second_half(val);
                 val[1] = old_z + dz;
                 if (ip_internal_cache_enabled_ && owner)
-                    sync_ip_internal_b(det, val[1]);
+                    queue_ip_internal_b(det, val);
                 if (ip_enabled_ && !owner) {
                     double diagonal;
                     if constexpr (stores_full_hii) {
@@ -811,6 +919,7 @@ public:
     {
         // Initialize sub_xz
         sub_xz.clear();
+        prepare_ip_pending_buffers();
         const NumericalType e0 = vecmath::index(this->get_variational_energy(), 0);
 
         // For (det, dx) in det_picked, update x[det] += dx
@@ -938,7 +1047,7 @@ public:
             vec_xz = val;
             assign_second_half(val, new_z);
             if (ip_internal_cache_enabled_ && is_internal(det, val))
-                sync_ip_internal_b(det, ipentry::b(val));
+                queue_ip_internal_b(det, val);
             return false;
         };
         upsert(data_, det, update_functor, val_new);
@@ -1011,6 +1120,7 @@ public:
             return -1;
         }
         try {
+            refresh_ip_internal_rows();
             if constexpr (COMPACT_IP) {
                 // The first slot holds d on external rows while IP is active.
                 // A checkpoint stores only the variational c there; d is
@@ -1020,6 +1130,7 @@ public:
                 data_.loop([&](const auto &entry) {
                     auto value = entry.second;
                     if (!is_internal(entry.first, value)) value[0] = 0;
+                    ipentry::clear_olsen_pending(value);
                     dump(file, entry.first);
                     dump(file, value);
                 });

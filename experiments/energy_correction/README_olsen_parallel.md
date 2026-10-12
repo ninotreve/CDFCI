@@ -43,9 +43,12 @@ The formula, precision, PT2 update, and wavefunction update are unchanged.
 The different summation order can change the last rounding bits.
 
 The internal determinant-to-row index uses the existing flat robinhood map.
-Entries are inserted before parallel b updates; those updates only query the
-index and synchronize the matching compact row. The main wavefunction table
-and external PT2 diagonal cache keep their existing representation.
+Entries are inserted before parallel b updates. An internal b update now queues
+the determinant only on its first change since the previous report, using the
+main entry's metadata to deduplicate across threads. At report time, queued
+rows are refreshed by key in parallel before the Olsen sum. Repeated updates
+do not query the internal index. The main wavefunction table and external PT2
+diagonal cache keep their existing size and numeric values.
 
 Normal energy rows are flushed to `c2_olsen_omp_JOBID.out` during the solve.
 The final solver time is printed there. On successful completion, the JSON

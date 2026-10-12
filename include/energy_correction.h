@@ -128,11 +128,11 @@ EnergyCorrectionResult compute_energy_correction(const H &ham, const W &wf,
     return out;
 }
 
-// The IP solver keeps the internal rows in a compact array as they change.
-// Olsen still uses the current Rayleigh energy at each report, but neither
-// pivot selection nor the projected sums visit the external hash table.
+// The IP solver queues changed internal b entries and refreshes their compact
+// rows on access at report time. Pivot selection and the projected sums then
+// use the current Rayleigh energy and read only the compact internal array.
 template <typename W>
-EnergyCorrectionResult compute_cached_internal_energy_correction(const W &wf)
+EnergyCorrectionResult compute_cached_internal_energy_correction(W &wf)
 {
     static_assert(W::NSTATES_val == 1, "Olsen correction supports one state");
     using Quad = QUAD_PRECISION;

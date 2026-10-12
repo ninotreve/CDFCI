@@ -99,7 +99,9 @@ int run_benchmark(int argc, char **argv)
                           {"stored_determinants", wf.size()},
                           {"coefficient_bytes_per_entry", sizeof(typename Wf::mapped_type)},
                           {"correction_seconds", result.energy_correction_seconds},
-                          {"correction_evaluations", result.energy_correction_evaluations}};
+                          {"correction_evaluations", result.energy_correction_evaluations},
+                          {"internal_b_refreshes", wf.ip_internal_b_refreshes()},
+                          {"peak_pending_internal_rows", wf.ip_peak_pending_internal_rows()}};
         return std::make_pair(result, summary);
     };
 
@@ -122,7 +124,7 @@ int run_benchmark(int argc, char **argv)
         reference = std::stod(reference_argument);
     }
 
-    if (!trajectory_only && !olsen_only)
+    if (mode == "timed")
         run(false, false, std::min<size_t>(iterations, 200), z_threshold); // warm caches
 
     // Single-mode runs do not repeat the raw or other correction trajectories.

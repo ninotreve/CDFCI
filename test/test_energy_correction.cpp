@@ -43,6 +43,104 @@ double direct_correction(const Eigen::MatrixXd &h, const Eigen::VectorXd &x) {
     CHECK(std::abs(v.dot(t)) < 1e-12);
     return -r.dot(t);
 }
+
+#ifdef CDFCI_SOLVER_SERIAL
+using PendingContainer = ContainerRobinhood<int, std::array<double, 3>>;
+#else
+using PendingContainer = ContainerCuckoo<int, std::array<double, 3>>;
+#endif
+struct PendingTestWf : WaveFunction<PendingContainer, 1, true> {
+    struct Diagonal {
+        double get_diagonal(int &) const { return -2.0; }
+    };
+    void initialize(size_t rows) {
+        this->reserve_capacity(65536);
+        this->configure_ip_correction(true);
+        this->ip_internal_cache_enabled_ = true;
+        this->prepare_ip_pending_buffers();
+        for (size_t i = 0; i < rows; ++i) {
+            std::array<double, 3> val{{1.0, 0.0, 0.0}};
+            ipentry::set_hii(val, -2.0, true);
+            upsert(this->data_, static_cast<int>(i), [](auto &) { return false; }, val);
+            this->sync_ip_internal_row(static_cast<int>(i), val, Diagonal{}, true, -2.0);
+        }
+    }
+    void add_b(int key) {
+        update_fn(this->data_, key, [&](auto &val) {
+            val[1] += 1.0;
+            // Coordinate selection must preserve a previously queued marker.
+            ipentry::set_owner(val, true);
+            this->queue_ip_internal_b(key, val);
+            return false;
+        });
+    }
+    const auto &unrefreshed_rows() const { return this->ip_internal_rows_; }
+    auto main_value(int key) const { return this->data_.find_val(key); }
+};
+}
+
+TEST_CASE("queued Olsen metadata preserves diagonals and internal ownership") {
+    std::array<double, 3> val{{0.0, 7.0, 0.0}};
+    ipentry::set_hii(val, -2.314159265358979, true);
+    const double diagonal = ipentry::hii(val);
+    CHECK(ipentry::is_c(val));
+    CHECK_FALSE(ipentry::olsen_pending(val));
+    ipentry::mark_olsen_pending(val);
+    CHECK(ipentry::has_hii(val));
+    CHECK(ipentry::is_c(val));
+    CHECK(ipentry::olsen_pending(val));
+    CHECK(ipentry::hii(val) == diagonal);
+    CHECK(ipentry::d(val) == 0.0);
+    ipentry::set_owner(val, true);
+    CHECK(ipentry::olsen_pending(val));
+    ipentry::clear_olsen_pending(val);
+    CHECK_FALSE(ipentry::olsen_pending(val));
+    CHECK(ipentry::hii(val) == diagonal);
+    ipentry::set_owner(val, false);
+    val[0] = 0.125;
+    ipentry::mark_olsen_pending(val);
+    CHECK_FALSE(ipentry::is_c(val));
+    CHECK_FALSE(ipentry::olsen_pending(val));
+    CHECK(ipentry::d(val) == 0.125);
+    CHECK(ipentry::hii(val) == diagonal);
+}
+
+TEST_CASE("pending internal b refresh deduplicates repeated parallel updates") {
+#if defined(_OPENMP) && !defined(CDFCI_SOLVER_SERIAL)
+    omp_set_num_threads(4);
+#endif
+    constexpr size_t rows = 8192;
+    PendingTestWf wf;
+    wf.initialize(rows);
+#if defined(_OPENMP) && !defined(CDFCI_SOLVER_SERIAL)
+#pragma omp parallel for schedule(static)
+#endif
+    for (size_t i = 0; i < 8 * rows; ++i) wf.add_b(static_cast<int>(i % rows));
+    CHECK(wf.pending_ip_internal_rows() == rows);
+    CHECK(wf.ip_internal_b_refreshes() == 0);
+    for (const auto &row : wf.unrefreshed_rows()) CHECK(row.b == 0.0);
+    const auto &constant_wf = wf;
+    CHECK_THROWS_AS(constant_wf.ip_internal_rows(), std::logic_error);
+    const auto &updated = wf.ip_internal_rows();
+    CHECK(wf.pending_ip_internal_rows() == 0);
+    CHECK(wf.ip_internal_b_refreshes() == rows);
+    CHECK(wf.ip_peak_pending_internal_rows() == rows);
+    for (size_t i = 0; i < rows; ++i) {
+        CHECK(updated[i].b == 8.0);
+        const auto val = wf.main_value(static_cast<int>(i));
+        REQUIRE(val.has_value());
+        CHECK((*val)[0] == 1.0);
+        CHECK((*val)[1] == 8.0);
+        CHECK(ipentry::hii(*val) == -2.0);
+        CHECK_FALSE(ipentry::olsen_pending(*val));
+    }
+    for (size_t i = 0; i < 1024; ++i) wf.add_b(static_cast<int>(i % 32));
+    CHECK(wf.pending_ip_internal_rows() == 32);
+    wf.refresh_ip_internal_rows();
+    CHECK(wf.ip_internal_b_refreshes() == rows + 32);
+    CHECK(wf.pending_ip_internal_rows() == 0);
+    for (size_t i = 0; i < rows; ++i)
+        CHECK(constant_wf.ip_internal_rows()[i].b == (i < 32 ? 40.0 : 8.0));
 }
 
 TEST_CASE("streaming correction matches the projected solve and space decomposition") {

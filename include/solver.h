@@ -159,7 +159,7 @@ public:
         return energy_correction_enabled;
     }
 
-    void record_energy_correction(const H &h, const W &wf, size_t iteration,
+    void record_energy_correction(const H &h, W &wf, size_t iteration,
                                   double initialization_seconds = 0.0)
     {
         if constexpr (W::NSTATES_val == 1) {

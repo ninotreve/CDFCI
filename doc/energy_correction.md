@@ -33,8 +33,11 @@ strategy: untouched rows retain their earlier denominator. The ownership bit
 stored with `H_ii` distinguishes `c` from `d` without a second hash lookup.
 When Olsen is enabled, a separate compact internal-only array mirrors `c`,
 `b`, and `H_ii`; Olsen is recomputed from the current Rayleigh energy at report
-points without scanning the main table. The internal determinant index is
-used only to maintain that compact array.
+points. Selected `c` entries are synchronized immediately. Changed internal
+`b` entries are marked in the main record and queued once between reports;
+the report refreshes their final values by key before reading the compact
+array. Repeated `b` updates need no lookup in the internal determinant index.
+The queue reuses the existing two metadata bits and adds no per-main-row field.
 
 The main progress table contains `PT2`, `Olsen`, and `Ecorr` columns. `PT2` is
 `external_correction`, `Olsen` is `internal_correction`, and `Ecorr` is the
@@ -81,8 +84,13 @@ cost and potentially different external space.
 ## Cost and precision
 
 The report-time Olsen evaluator scans the compact internal array twice and
-does not traverse the much larger external hash table. Its cost and additional
-memory are O(number of internal determinants). The main table uses one more
+does not traverse the much larger external hash table. Before those scans it
+looks up each queued internal row once in the internal index and the main
+table. If D internal rows changed since the previous report and V rows are
+internal, the work is O(D + V); D cannot exceed V within one interval. Queue
+buffers retain their allocated capacity across reports. If most internal rows
+change, the refresh still requires many random reads, so a speedup is workload
+dependent. The main table uses one more
 double per stored row for the diagonal cache. The external PT2 result comes
 from the incremental IP accumulator; each changed external row reuses its
 diagonal after the first evaluation. PT2 denominators for untouched rows can lag behind the
