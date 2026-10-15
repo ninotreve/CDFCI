@@ -1,0 +1,7 @@
+{
+  "energy": -75.7319603747,
+  "source": "regression_tests/c2/ccpvdz_psi4/output",
+  "method": "223400000-iteration CDFCI calculation",
+  "fcidump": "data/c2_ccpvdz_psi4.FCIDUMP",
+  "note": "Long-run regression energy used as the default accuracy reference."
+}

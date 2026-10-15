@@ -26,8 +26,10 @@ _cdfci*.so
 !cdfci_pe_990773.out
 !cdfci_three_way_1007783.out
 !cdfci_three_way_1007784.out
+!cdfci_three_way_1022420.out
+!/experiment_results/energy_correction/1022419/c2_ccpvdz/prefix_3000000/source_stdout_prefix.out
 
-# Keep local/test runs ignored; publish only the six completed paper runs.
+# Publish six historical runs plus selected C2 3M / N2 2.6M datasets.
 /experiment_results/*
 !/experiment_results/energy_correction/
 /experiment_results/energy_correction/*
@@ -37,4 +39,6 @@ _cdfci*.so
 !/experiment_results/energy_correction/990773/
 !/experiment_results/energy_correction/1007783/
 !/experiment_results/energy_correction/1007784/
+!/experiment_results/energy_correction/1022419/
+!/experiment_results/energy_correction/1022420/
 *.log

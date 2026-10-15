@@ -1,18 +1,33 @@
 # Energy-correction paper experiments
 
-Completed C2/N2 runs, figures, timing ablations, and paper-ready findings are
-indexed in [RESULTS.md](RESULTS.md), including limitations of the "almost free"
-claim. The latest parallel-Olsen three-way results are documented in
-[RESULTS_PARALLEL.md](RESULTS_PARALLEL.md): C2 job `1007783` and N2 job
-`1007784`, with full-solve Olsen overheads of 5.14% and 23.21% over IP-only.
-Only the six completed production result directories are versioned;
-local tests, other runs, build files, and new FCIDUMP files remain ignored.
+The latest deferred-refresh datasets are **C2 3,000,000 steps** (same-node
+prefix from job `1022419`) and **N2 2,600,000 steps** (complete job `1022420`).
+Start with [RESULTS_DEFERRED.md](RESULTS_DEFERRED.md) for data/figure links,
+timing definitions, limitations and commands that reanalyze the committed
+sources without FCIDUMP or a cluster. Olsen/IP time differences are C2 +3.28%
+and N2 -1.97%, with single-run/shared-node caveats.
+
+This release includes only these two current datasets. The cancelled cross-node
+recovery is excluded and cleaned out of the working tree. C2's exported source
+JSON/stdout contain only the selected 300 report points; original 3.6M-step
+invocation metadata and TIMEOUT state are retained honestly. IP-only values
+come from rounded stdout, not a fabricated completed benchmark JSON.
+
+Six already published historical datasets remain available for old/new
+comparison in [RESULTS.md](RESULTS.md) and
+[RESULTS_PARALLEL.md](RESULTS_PARALLEL.md). Local tests, other runs, build files,
+and new FCIDUMP files remain ignored.
 
 For a new same-node raw / IP-only / parallel IP+Olsen comparison on this
 cluster's `partition` partition, use `run_three_way.sbatch`. It keeps the
 previous 64-thread, 64-coordinate production settings, requests 96 GiB and
 18 hours on bigMem5 without exclusive allocation, and runs all three variants
 within one job per molecule. Build the latest OpenMP benchmark first:
+
+The defaults are now **3,000,000 C2 steps and 2,600,000 N2 steps**. The original
+C2 3.6M allocation timed out during IP-only; the retained same-allocation 3M
+prefix avoids an unnecessary or cross-node recovery. Published historical
+datasets retain their original settings and have not been overwritten.
 
 ```bash
 cmake --build build_experiments --target cdfci_energy_correction_benchmark_omp --parallel 4
@@ -26,6 +41,12 @@ JSON trajectories, `runtime_summary.csv` / JSON with all three solve times,
 the existing raw/corrected and IP/Olsen comparison plots, and an early-written
 manifest containing binary/source SHA256 hashes and exact solver parameters.
 `CDFCI_BENCHMARK_APP` can select a frozen binary for reproducible queued jobs.
+`CDFCI_RUN_PROVENANCE` optionally selects a submission-time JSON snapshot of
+source and binary hashes, so later checkout changes do not relabel queued runs.
+Runtime summaries also include `internal_b_refreshes` and
+`peak_pending_internal_rows` from the deferred-refresh implementation.
+Upstream `5e5cc06` warms `timed` mode for 200 raw steps, but no longer warms
+`ip-only` mode; the script preserves that upstream behavior and records it.
 Olsen's incremental overhead is `(T_IP+Olsen - T_IP) / T_IP`; each variant has
 one full measurement, so node activity and run order can still affect timings.
 

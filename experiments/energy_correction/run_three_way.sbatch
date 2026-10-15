@@ -15,13 +15,13 @@ set -euo pipefail
 SYSTEM="${1:-}"
 case "${SYSTEM}" in
     c2_ccpvdz)
-        ITERATIONS="${CDFCI_C2_ITERATIONS:-800000}"
+        ITERATIONS="${CDFCI_C2_ITERATIONS:-3000000}"
         Z_THRESHOLD="${CDFCI_C2_Z_THRESHOLD:-3e-8}"
         MAX_WAVEFUNCTION_SIZE="${CDFCI_C2_MAX_WAVEFUNCTION_SIZE:-1696512081}"
         REFERENCE_KEY=c2_ccpvdz_psi4
         ;;
     n2_ccpvdz)
-        ITERATIONS="${CDFCI_N2_ITERATIONS:-2200000}"
+        ITERATIONS="${CDFCI_N2_ITERATIONS:-2600000}"
         Z_THRESHOLD="${CDFCI_N2_Z_THRESHOLD:-5e-7}"
         MAX_WAVEFUNCTION_SIZE="${CDFCI_N2_MAX_WAVEFUNCTION_SIZE:-848256040}"
         REFERENCE_KEY=n2_ccpvdz_psi4
@@ -97,13 +97,26 @@ manifest = {
     'num_coordinates': int(coordinates),
     'live_reports': True,
     'execution_order': ['raw', 'ip+olsen', 'ip'],
+    'benchmark_warmup': {'timed': '200 raw steps', 'ip-only': 'none in upstream 5e5cc06'},
     'source_sha256': {
         path: hashlib.sha256(Path(path).read_bytes()).hexdigest()
         for path in ('test/benchmark_energy_correction.cpp', 'include/energy_correction.h',
+                     'include/ip_entry.h',
                      'include/wavefunction.h', 'include/solver.h',
                      'experiments/energy_correction/run_three_way.sbatch')
     },
 }
+# Preserve submission-time source provenance even if the checkout changes
+# while the allocation is queued. The frozen binary must still match exactly.
+provenance_path = os.environ.get('CDFCI_RUN_PROVENANCE')
+if provenance_path:
+    provenance = json.loads(Path(provenance_path).read_text())
+    if provenance['binary_sha256'] != manifest['binary_sha256']:
+        raise RuntimeError('Frozen benchmark binary differs from submission provenance')
+    manifest['git_commit'] = provenance['git_commit']
+    manifest['source_sha256'] = provenance['source_sha256']
+    manifest['submission_provenance'] = str(Path(provenance_path).resolve())
+    manifest['iteration_plan'] = provenance['iteration_plan']
 (root / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
 PY
 
@@ -122,7 +135,8 @@ SOLVER_ARGS=("${Z_THRESHOLD}" "${MAX_WAVEFUNCTION_SIZE}" "${NUM_COORDINATES}" 1)
 srun --ntasks=1 --cpus-per-task="${OMP_NUM_THREADS}" --cpu-bind=cores \
     "${APP}" "${ARGS[@]}" "${PAIRED_JSON}" timed "${SOLVER_ARGS[@]}"
 
-# Same-node IP-only, again from a fresh wavefunction with the same warm-up.
+# Same-node IP-only, again from a fresh wavefunction. Upstream 5e5cc06
+# intentionally warms timed mode only; do not silently change the benchmark.
 srun --ntasks=1 --cpus-per-task="${OMP_NUM_THREADS}" --cpu-bind=cores \
     "${APP}" "${ARGS[@]}" "${IP_JSON}" ip-only "${SOLVER_ARGS[@]}"
 
@@ -138,7 +152,9 @@ output = Path(sys.argv[3])
 rows = [
     {'mode': label, 'solver_seconds': run['seconds'],
      'variational_energy': run['energy'], 'correction_seconds': run['correction_seconds'],
-     'correction_evaluations': run['correction_evaluations']}
+     'correction_evaluations': run['correction_evaluations'],
+     'internal_b_refreshes': run.get('internal_b_refreshes', 0),
+     'peak_pending_internal_rows': run.get('peak_pending_internal_rows', 0)}
     for label, run in [('raw', paired['baseline_trajectory_run']),
                        ('ip', ip['trajectory_run']), ('ip+olsen', paired['trajectory_run'])]
 ]

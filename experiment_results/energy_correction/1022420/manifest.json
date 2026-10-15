@@ -1,0 +1,55 @@
+{
+  "mode": "three-way-parallel-olsen",
+  "benchmark_systems": [
+    "n2_ccpvdz"
+  ],
+  "git_commit": "5e5cc06b4ac1b836bf06be5b1c185ef9922c1a0f",
+  "job_id": "1022420",
+  "node": "bigMem5",
+  "partition": "partition",
+  "openmp_threads": 64,
+  "omp_proc_bind": "spread",
+  "omp_places": "cores",
+  "benchmark_app": "/home/yjzhang/codes/cdfci/perturbation/CDFCI/build_experiments/three-way-5e5cc06.70zDtK/bin/cdfci_energy_correction_benchmark_omp",
+  "binary_sha256": "48f4dd637b803ebd5ddfaa2c31a296ba054ada3640441af38b843f3edcbd0d70",
+  "num_iterations": 2600000,
+  "report_interval": 10000,
+  "z_threshold": 5e-07,
+  "max_wavefunction_size": 848256040,
+  "num_coordinates": 64,
+  "live_reports": true,
+  "execution_order": [
+    "raw",
+    "ip+olsen",
+    "ip"
+  ],
+  "benchmark_warmup": {
+    "timed": "200 raw steps",
+    "ip-only": "none in upstream 5e5cc06"
+  },
+  "source_sha256": {
+    "test/benchmark_energy_correction.cpp": "48a131fee1d8b4a58f8d86ded8fca54e1cad1692b51e429fd567fcc570ee5607",
+    "include/energy_correction.h": "fbbbe8cd0dd714938887c926920c7b2a7bd06f875f55bb14ad050f12b5edc149",
+    "include/ip_entry.h": "93011ff8a587187ae6ddc976072990f3101745a2c138dec9d139b673b18b0158",
+    "include/wavefunction.h": "f170c36d82adec7c27d05b0b99f46dabee0410aa9be6147f3302124d15e974ee",
+    "include/solver.h": "c1c09f5ace179e03e1b188ee70e0557e58901415bcaed1405ebc8d32d5de5a04",
+    "experiments/energy_correction/run_three_way.sbatch": "f62300e77c8b792dc22add5b481ee36b26a243881f0278036ecc2eb0726d60f4"
+  },
+  "submission_provenance": "/home/yjzhang/codes/cdfci/perturbation/CDFCI/build_experiments/three-way-5e5cc06.70zDtK/submission_provenance.json",
+  "iteration_plan": {
+    "c2_ccpvdz": {
+      "previous_job": "1007783",
+      "previous_iterations": 800000,
+      "iterations": 3600000,
+      "estimated_allocation_seconds": 56340,
+      "safety_margin_seconds": 8460
+    },
+    "n2_ccpvdz": {
+      "previous_job": "1007784",
+      "previous_iterations": 2200000,
+      "iterations": 2600000,
+      "estimated_allocation_seconds": 57855.90909090909,
+      "safety_margin_seconds": 6944.090909090912
+    }
+  }
+}

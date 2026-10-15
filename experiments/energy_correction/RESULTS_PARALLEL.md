@@ -1,5 +1,7 @@
 # C2/N2：并行 Olsen 的 raw / IP / IP+Olsen 三组实验
 
+> 最新 `5e5cc06` 延迟刷新结果请看 [RESULTS_DEFERRED.md](RESULTS_DEFERRED.md)。本文保留为 `cd30332` 的历史实验记录。
+
 ## 结论与论文表述
 
 在 qiumy 的 `cd303323969b01b5657d7fa1050e8a82b89d7541`（并行 Olsen 报告扫描、内部 row 索引改为 flat map）上，两套生产实验均正常完成。相对 [旧版串行结果](RESULTS.md)，报告点直接 correction 计时缩短约 43 倍，完整求解的 Olsen 增量开销从 C2 24.63% / N2 61.16% 降至 **5.14% / 23.21%**。这验证了优化有效，但 N2 的完整长轨迹仍不能无条件称为 “almost free”。旧/新实现还同时改变了数据结构，且测量不在同一时段，不能把这 43 倍解释为单独 OpenMP 改动的受控加速比。
