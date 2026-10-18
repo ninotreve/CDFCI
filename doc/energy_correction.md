@@ -156,3 +156,55 @@ as the first timing pair. Loading FCIDUMP is outside the timings; solver
 allocation is inside. `auto` first runs the requested longer reference budget
 and records its tail energy change. A supplied reference must match the actual
 input Hamiltonian, not merely the molecule name.
+
+### Benchmark stopping, signed errors, and live recovery
+
+The complete positional interface is:
+
+```text
+benchmark FCIDUMP iterations interval reference_energy|auto output.json
+  [timed|trajectory-only|ip-only|olsen-only
+    [z_threshold [max_wavefunction_size [num_coordinates [timing_repeats
+      [reference_iterations [reference_z_threshold [stopping_dx_threshold]]]]]]]]
+```
+
+`stopping_dx_threshold` now defaults to **0**, disabling early convergence so
+the benchmark executes the requested number of iterations, including a final
+partial report interval. Pass a finite nonnegative value as the last argument
+to enable early stopping; `1e-8` reproduces the previous benchmark threshold.
+This changes only the benchmark default, not the solver's ordinary default.
+
+All final correction trajectory records include `raw_signed_error`,
+`external_only_signed_error`, and `corrected_signed_error`, defined as the
+corresponding energy minus the reference. Negative values mean below the
+reference; this does not certify undershoot of the exact ground-state energy
+when the reference itself has uncertainty. Existing `raw_error`,
+`external_only_error`, and `corrected_error` fields remain absolute errors for
+compatibility with plots and time-to-target analysis. Single-mode IP and
+IP+Olsen outputs now include both forms too.
+
+In addition to the final `output.json`, every invocation writes
+`output.json.jsonl`. Each report is serialized at round-trip double precision
+and flushed immediately, including in quiet mode. The JSONL journal contains:
+
+* `metadata`: schema version, input path, mode, and stopping threshold;
+* `run_start`: a unique `run_id`, phase, actual options, and reference;
+* `report`: iteration, energies, corrections, counts, work, and wall time;
+* `run_end`: successful solve summary, including the actual iteration count;
+* `reference`: the computed reference after an `auto` reference solve finishes.
+
+Phases distinguish `reference`, `warmup`, `raw`, `ip`, and `ip+olsen`; repeated
+timing solves have different run IDs. Automatic-reference reports omit error
+fields while the reference is unknown. Correction reports contain signed and
+absolute errors once the reference is available. Raw reports contain the raw
+energy and, when available, its errors. Report times include previous journal
+writes; solve totals include all journal writes. `correction_seconds` remains
+the evaluator timer and excludes journal I/O and per-update maintenance.
+
+On interruption, recover complete newline-terminated records from the journal;
+an interrupted final line may be incomplete. A journal without `run_end` is a
+partial run, not a completed benchmark. Flush protects against process
+interruption, not storage or power failures. The journal is overwritten on
+startup and the final JSON only on successful completion. Choose a new output
+path for each invocation so an older final JSON cannot be mistaken for the
+result of a new, interrupted run.

@@ -7,6 +7,48 @@
 #include <fstream>
 #include <sstream>
 
+// Keep the existing absolute-error fields compatible with analysis scripts.
+// Signed errors use E - E_ref: negative values identify reference undershoot.
+void add_energy_errors(Option &row, double reference)
+{
+    const double raw = row.at("variational_energy").get<double>() - reference;
+    const double external = row.at("variational_energy").get<double>() +
+                            row.at("external_correction").get<double>() - reference;
+    const double corrected = row.at("corrected_energy").get<double>() - reference;
+    row["raw_signed_error"] = raw;
+    row["external_only_signed_error"] = external;
+    row["corrected_signed_error"] = corrected;
+    row["raw_error"] = std::abs(raw);
+    row["external_only_error"] = std::abs(external);
+    row["corrected_error"] = std::abs(corrected);
+}
+
+class ScopedCoutRedirect {
+    std::streambuf *original_;
+public:
+    explicit ScopedCoutRedirect(std::streambuf *destination)
+        : original_(std::cout.rdbuf(destination)) {}
+    void restore() { std::cout.rdbuf(original_); }
+    ~ScopedCoutRedirect() { restore(); }
+};
+
+// Observe completed solver reports without changing coordinate updates or the
+// correction formula. This also works at verbose=0 and for raw reference runs.
+template<class H, class W>
+class BenchmarkSolver : public CDFCISolver<H, W> {
+public:
+    using CDFCISolver<H, W>::CDFCISolver;
+    std::function<void(size_t, double)> on_report;
+
+    void output_line(size_t iteration, typename W::data_type energy,
+                     typename W::data_type dx, size_t x_size, size_t z_size,
+                     double seconds) override
+    {
+        CDFCISolver<H, W>::output_line(iteration, energy, dx, x_size, z_size, seconds);
+        if (on_report) on_report(iteration, seconds);
+    }
+};
+
 template <int N>
 int run_benchmark(int argc, char **argv)
 {
@@ -44,6 +86,12 @@ int run_benchmark(int argc, char **argv)
     const size_t timing_repeats = argc >= 11 ? std::stoull(argv[10]) : 1;
     const size_t reference_iterations = argc >= 12 ? std::stoull(argv[11]) : 5 * iterations;
     const double reference_z_threshold = argc >= 13 ? std::stod(argv[12]) : z_threshold;
+    // Fixed-length trajectories are the default; opt in to early stopping.
+    const double stopping_dx_threshold = argc >= 14 ? std::stod(argv[13]) : 0.0;
+    if (!std::isfinite(stopping_dx_threshold) || stopping_dx_threshold < 0) {
+        std::cerr << "stopping_dx_threshold must be finite and nonnegative\n";
+        return 1;
+    }
     if (max_wavefunction_size == 0 || num_coordinates == 0 ||
         (!trajectory_only && timing_repeats == 0)) {
         std::cerr << "max_wavefunction_size, num_coordinates, and timing_repeats "
@@ -60,6 +108,27 @@ int run_benchmark(int argc, char **argv)
         return 1;
     }
 
+    double reference = automatic_reference ? 0.0 : std::stod(reference_argument);
+    if (!std::isfinite(reference)) {
+        std::cerr << "reference energy must be finite\n";
+        return 1;
+    }
+    bool reference_available = !automatic_reference;
+    // A separate, flushed JSONL journal survives interrupted solves. The
+    // original final JSON schema and its consumers remain usable unchanged.
+    const std::string journal_path = std::string(argv[5]) + ".jsonl";
+    std::ofstream journal(journal_path);
+    auto write_event = [&](const Option &event) {
+        journal << event.dump() << '\n';
+        journal.flush();
+        if (!journal)
+            throw std::runtime_error("Cannot write benchmark journal: " + journal_path);
+    };
+    write_event({{"record_type", "metadata"}, {"schema_version", 1},
+                 {"benchmark_mode", mode}, {"fcidump", argv[1]},
+                 {"reference_energy", reference_available ? Option(reference) : Option(nullptr)},
+                 {"stopping_dx_threshold", stopping_dx_threshold}});
+
     Option hopt = {{"type", "molecule"},
                    {"molecule", {{"fcidump_path", argv[1]},
                                   {"threshold", 0.0}, {"verbose", 0}}}};
@@ -67,14 +136,15 @@ int run_benchmark(int argc, char **argv)
     Det::constuct_masks();
     Option opt = {{"num_iterations", iterations}, {"report_interval", interval},
                   {"num_coordinates", num_coordinates}, {"z_threshold", z_threshold},
-                  {"stopping_dx_threshold", 1e-8},
+                  {"stopping_dx_threshold", stopping_dx_threshold},
                   {"max_wavefunction_size", max_wavefunction_size},
                   {"verbose", live_reports ? 1 : 0}};
 
     std::ostringstream muted;
-    auto original = std::cout.rdbuf();
-    if (!live_reports) std::cout.rdbuf(muted.rdbuf());
-    auto run = [&](bool enabled, bool history, size_t steps, double run_z_threshold) {
+    ScopedCoutRedirect redirect(live_reports ? std::cout.rdbuf() : muted.rdbuf());
+    size_t run_id = 0;
+    auto run = [&](bool enabled, bool history, size_t steps, double run_z_threshold,
+                   const std::string &phase) {
         opt["num_iterations"] = steps;
         opt["report_interval"] = std::min(interval, steps);
         opt["z_threshold"] = run_z_threshold;
@@ -85,7 +155,38 @@ int run_benchmark(int argc, char **argv)
             std::cout << "[Benchmark] "
                       << (enabled ? (ip_only ? "IP/PT2" : "IP/PT2+Olsen") : "raw CDFCI")
                       << " iterations=" << steps << std::endl;
-        CDFCISolver<Ham, Wf> solver(opt);
+        const size_t current_run = ++run_id;
+        write_event({{"record_type", "run_start"}, {"run_id", current_run},
+                     {"phase", phase}, {"options", opt},
+                     {"reference_energy", reference_available ? Option(reference) : Option(nullptr)}});
+        BenchmarkSolver<Ham, Wf> solver(opt);
+        solver.on_report = [&](size_t iteration, double seconds) {
+            Option row = {{"record_type", "report"}, {"run_id", current_run},
+                          {"phase", phase}, {"iteration", iteration},
+                          {"wall_seconds", seconds},
+                          {"variational_energy", solver.energy_history.back()},
+                          {"stored_determinants", solver.x_size_history.back()},
+                          {"stored_wavefunction_entries", solver.z_size_history.back()},
+                          {"hamiltonian_columns", solver.hamiltonian_columns_history.back()}};
+            if (enabled) {
+                const auto &pe = solver.last_energy_correction;
+                if (pe.iteration != iteration)
+                    throw std::runtime_error("Correction and solver report are not aligned");
+                row["variational_energy"] = pe.variational_energy;
+                row["external_correction"] = pe.external_correction;
+                row["internal_correction"] = pe.internal_correction;
+                row["corrected_energy"] = pe.corrected_energy;
+                row["internal_residual_norm"] = pe.internal_residual_norm;
+                row["correction_seconds"] = pe.seconds;
+                row["status"] = pe.status;
+                if (reference_available) add_energy_errors(row, reference);
+            } else if (reference_available) {
+                const double error = solver.energy_history.back() - reference;
+                row["raw_signed_error"] = error;
+                row["raw_error"] = std::abs(error);
+            }
+            write_event(row);
+        };
         Wf wf;
         const auto start = std::chrono::steady_clock::now();
         const int status = solver.solve(*ham, wf);
@@ -96,22 +197,26 @@ int run_benchmark(int argc, char **argv)
                                      std::to_string(status));
         auto result = solver.get_result();
         Option summary = {{"seconds", seconds}, {"energy", result.energy},
+                          {"iterations", result.iterations},
                           {"stored_determinants", wf.size()},
                           {"coefficient_bytes_per_entry", sizeof(typename Wf::mapped_type)},
                           {"correction_seconds", result.energy_correction_seconds},
                           {"correction_evaluations", result.energy_correction_evaluations},
                           {"internal_b_refreshes", wf.ip_internal_b_refreshes()},
                           {"peak_pending_internal_rows", wf.ip_peak_pending_internal_rows()}};
+        write_event({{"record_type", "run_end"}, {"run_id", current_run},
+                     {"phase", phase}, {"summary", summary}});
         return std::make_pair(result, summary);
     };
 
-    double reference = 0.0;
     Option reference_run = nullptr;
     if (automatic_reference) {
-        auto computed = run(false, false, reference_iterations, reference_z_threshold);
+        auto computed = run(false, false, reference_iterations, reference_z_threshold, "reference");
         reference = computed.first.energy;
+        reference_available = true;
+        write_event({{"record_type", "reference"}, {"reference_energy", reference}});
         reference_run = computed.second;
-        reference_run["iterations"] = reference_iterations;
+        reference_run["requested_iterations"] = reference_iterations;
         reference_run["z_threshold"] = reference_z_threshold;
         if (computed.first.energy_history.size() >= 2) {
             const size_t last = computed.first.energy_history.size() - 1;
@@ -120,17 +225,16 @@ int run_benchmark(int argc, char **argv)
                 std::abs(computed.first.energy_history[last] -
                          computed.first.energy_history[last - 1]);
         }
-    } else {
-        reference = std::stod(reference_argument);
     }
 
     if (mode == "timed")
-        run(false, false, std::min<size_t>(iterations, 200), z_threshold); // warm caches
+        run(false, false, std::min<size_t>(iterations, 200), z_threshold, "warmup");
 
     // Single-mode runs do not repeat the raw or other correction trajectories.
     if (ip_only || olsen_only) {
-        auto trajectory = run(true, true, iterations, z_threshold);
-        std::cout.rdbuf(original);
+        auto trajectory = run(true, true, iterations, z_threshold,
+                              ip_only ? "ip" : "ip+olsen");
+        redirect.restore();
         Option records = Option::array();
         size_t index = 0;
         for (const auto &pe : trajectory.first.energy_correction_history) {
@@ -146,6 +250,7 @@ int run_benchmark(int argc, char **argv)
                                {"stored_wavefunction_entries", trajectory.first.z_size_history.at(index)},
                                {"hamiltonian_columns", trajectory.first.hamiltonian_columns_history.at(index)}});
             ++index;
+            add_energy_errors(records.back(), reference);
         }
         Option output = {{"benchmark_mode", mode}, {"fcidump", argv[1]},
                          {"spin_orbitals", ham->norb}, {"electrons", ham->nelec},
@@ -164,8 +269,13 @@ int run_benchmark(int argc, char **argv)
 
     // These runs provide both trajectories and the first wall-time pair. This
     // avoids two redundant production-scale solves from the old benchmark.
-    auto baseline_trajectory = run(false, false, iterations, z_threshold);
-    auto trajectory = run(true, true, iterations, z_threshold);
+    auto baseline_trajectory = run(false, false, iterations, z_threshold, "raw");
+    auto trajectory = run(true, true, iterations, z_threshold, "ip+olsen");
+    if (baseline_trajectory.first.iterations != trajectory.first.iterations ||
+        baseline_trajectory.first.energy_history.size() !=
+            trajectory.first.energy_history.size())
+        throw std::runtime_error("Paired runs stopped at different iterations; "
+                                 "use stopping_dx_threshold=0 for aligned trajectories");
     Option runs = Option::array();
     if (!trajectory_only) {
         runs.push_back({{"baseline", baseline_trajectory.second},
@@ -173,16 +283,16 @@ int run_benchmark(int argc, char **argv)
         for (size_t repeat = 1; repeat < timing_repeats; ++repeat) {
             std::pair<Result, Option> plain, pe;
             if (repeat % 2 == 0) {
-                plain = run(false, false, iterations, z_threshold);
-                pe = run(true, false, iterations, z_threshold);
+                plain = run(false, false, iterations, z_threshold, "raw");
+                pe = run(true, false, iterations, z_threshold, "ip+olsen");
             } else {
-                pe = run(true, false, iterations, z_threshold);
-                plain = run(false, false, iterations, z_threshold);
+                pe = run(true, false, iterations, z_threshold, "ip+olsen");
+                plain = run(false, false, iterations, z_threshold, "raw");
             }
             runs.push_back({{"baseline", plain.second}, {"enabled", pe.second}});
         }
     }
-    std::cout.rdbuf(original);
+    redirect.restore();
 
     Option records = Option::array();
     size_t record_index = 0;
@@ -207,10 +317,6 @@ int run_benchmark(int argc, char **argv)
                            {"internal_correction", pe.internal_correction},
                            {"external_correction", pe.external_correction},
                            {"corrected_energy", pe.corrected_energy}, {"status", pe.status},
-                           {"raw_error", std::abs(pe.variational_energy - reference)},
-                           {"external_only_error",
-                            std::abs(pe.variational_energy + pe.external_correction - reference)},
-                           {"corrected_error", std::abs(pe.corrected_energy - reference)},
                            {"internal_residual_norm", pe.internal_residual_norm},
                            {"stored_determinants",
                             trajectory.first.x_size_history[record_index]},
@@ -234,6 +340,7 @@ int run_benchmark(int argc, char **argv)
                            {"diagonal_evaluations", pe.diagonal_evaluations},
                            {"seconds", pe.seconds}});
         previous_corrected_wall_seconds = corrected_wall_seconds;
+        add_energy_errors(records.back(), reference);
         ++record_index;
     }
     Option output = {{"fcidump", argv[1]}, {"spin_orbitals", ham->norb},
@@ -254,24 +361,30 @@ int run_benchmark(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-    if (argc < 6 || argc > 13) {
+    if (argc < 6 || argc > 14) {
         std::cerr
             << "Usage: benchmark_energy_correction FCIDUMP iterations interval "
                "reference_energy|auto output.json [timed|trajectory-only|ip-only|olsen-only "
                "[z_threshold [max_wavefunction_size [num_coordinates "
-               "[timing_repeats [reference_iterations [reference_z_threshold]]]]]]]]\n";
+               "[timing_repeats [reference_iterations [reference_z_threshold "
+               "[stopping_dx_threshold]]]]]]]]]\n";
         return 1;
     }
-    Option hopt = {{"type", "molecule"},
-                   {"molecule", {{"fcidump_path", argv[1]}, {"verbose", 0}}}};
-    const int spin_orbitals = Hamiltonian<1>::read_norb(hopt);
-    const int determinant_words = 1 + (spin_orbitals - 1) / Determinant<1>::det_size;
-    switch (determinant_words) {
-    case 1: return run_benchmark<1>(argc, argv);
-    case 2: return run_benchmark<2>(argc, argv);
-    default:
-        std::cerr << "Benchmark supports at most 128 spin orbitals; input has "
-                  << spin_orbitals << '\n';
+    try {
+        Option hopt = {{"type", "molecule"},
+                       {"molecule", {{"fcidump_path", argv[1]}, {"verbose", 0}}}};
+        const int spin_orbitals = Hamiltonian<1>::read_norb(hopt);
+        const int determinant_words = 1 + (spin_orbitals - 1) / Determinant<1>::det_size;
+        switch (determinant_words) {
+        case 1: return run_benchmark<1>(argc, argv);
+        case 2: return run_benchmark<2>(argc, argv);
+        default:
+            std::cerr << "Benchmark supports at most 128 spin orbitals; input has "
+                      << spin_orbitals << '\n';
+            return 1;
+        }
+    } catch (const std::exception &error) {
+        std::cerr << "Benchmark failed: " << error.what() << '\n';
         return 1;
     }
 }

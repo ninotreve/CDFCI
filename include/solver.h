@@ -449,7 +449,7 @@ public:
                 // Update the stopping criterion
                 early_stop = check_convergence(vec_xz, dx_accumulated, det_picked);
                 if (energy_correction_active() &&
-                    (iterations % report_interval == 0 || early_stop))
+                    (iterations % report_interval == 0 || early_stop || iterations == num_iter))
                     record_current_energy_correction(iterations);
                 if (early_stop) break;
 
