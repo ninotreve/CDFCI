@@ -1,0 +1,6 @@
+JobID|JobName|Partition|State|ExitCode|Elapsed|MaxRSS|NodeList
+1022419|cdfci_c2_deferred_three_way|partition|TIMEOUT|0:0|18:00:20||bigMem5
+1022419.batch|batch||CANCELLED|0:15|18:00:21|6900K|bigMem5
+1022419.extern|extern||COMPLETED|0:0|18:00:27|0|bigMem5
+1022419.0|cdfci_energy_correction_benchmark_omp||COMPLETED|0:0|12:39:48|89009104K|bigMem5
+1022419.1|cdfci_energy_correction_benchmark_omp||CANCELLED|0:15|05:20:38|71492072K|bigMem5
