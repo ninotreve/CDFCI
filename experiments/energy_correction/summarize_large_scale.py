@@ -70,13 +70,16 @@ def main() -> None:
     previous_corrected_wall_seconds = 0.0
     for original in data["trajectory"]:
         row = dict(original)
-        row["raw_error"] = abs(float(row["variational_energy"]) - reference)
-        row["external_only_error"] = abs(
+        row["raw_signed_error"] = float(row["variational_energy"]) - reference
+        row["external_only_signed_error"] = (
             float(row["variational_energy"])
             + float(row["external_correction"])
             - reference
         )
-        row["corrected_error"] = abs(float(row["corrected_energy"]) - reference)
+        row["corrected_signed_error"] = float(row["corrected_energy"]) - reference
+        row["raw_error"] = abs(row["raw_signed_error"])
+        row["external_only_error"] = abs(row["external_only_signed_error"])
+        row["corrected_error"] = abs(row["corrected_signed_error"])
         raw_wall_seconds = float(row["raw_wall_seconds"])
         corrected_wall_seconds = float(row["corrected_wall_seconds"])
         raw_interval_seconds = raw_wall_seconds - previous_raw_wall_seconds
@@ -132,6 +135,8 @@ def main() -> None:
         "iteration", "stored_determinants", "stored_residual_entries",
         "stored_wavefunction_entries",
         "variational_energy", "corrected_energy", "raw_error", "corrected_error",
+        "external_correction", "internal_correction", "external_only_error",
+        "raw_signed_error", "external_only_signed_error", "corrected_signed_error",
         "raw_wall_seconds", "corrected_wall_seconds", "correction_seconds",
         "interval_total_seconds", "interval_correction_overhead",
         "cumulative_correction_overhead", "interval_end_to_end_overhead",

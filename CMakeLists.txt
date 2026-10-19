@@ -163,6 +163,24 @@ if(CDFCI_BUILD_PYTHON)
 endif()
 
 if(BUILD_TESTING)
+    if(CDFCI_BUILD_EXPERIMENTS)
+        find_package(Python3 QUIET COMPONENTS Interpreter)
+        if(Python3_Interpreter_FOUND)
+            foreach(benchmark_target cdfci_energy_correction_benchmark cdfci_energy_correction_benchmark_omp)
+                if(TARGET ${benchmark_target})
+                    add_test(
+                        NAME ${benchmark_target}.output
+                        COMMAND "${Python3_EXECUTABLE}"
+                            "${CMAKE_CURRENT_SOURCE_DIR}/test/test_benchmark_output.py"
+                            "$<TARGET_FILE:${benchmark_target}>"
+                            "${CMAKE_CURRENT_SOURCE_DIR}/data/h2o_sto3g_psi4.FCIDUMP"
+                    )
+                    set_tests_properties(${benchmark_target}.output PROPERTIES
+                        ENVIRONMENT "OMP_NUM_THREADS=2;OMP_DYNAMIC=false" TIMEOUT 60)
+                endif()
+            endforeach()
+        endif()
+    endif()
     cdfci_add_executable(cdfci_energy_correction_test test/test_energy_correction.cpp)
     add_test(NAME cdfci.energy_correction COMMAND cdfci_energy_correction_test)
     set_tests_properties(cdfci.energy_correction PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
