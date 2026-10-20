@@ -72,12 +72,13 @@ int run_benchmark(int argc, char **argv)
     const std::string reference_argument = argv[4];
     const std::string mode = argc >= 7 ? argv[6] : "timed";
     const bool trajectory_only = mode == "trajectory-only";
+    const bool raw_only = mode == "raw-only";
     const bool ip_only = mode == "ip-only";
     const bool olsen_only = mode == "olsen-only";
     const char *verbose_env = std::getenv("CDFCI_BENCHMARK_VERBOSE");
     const bool live_reports = verbose_env && std::string(verbose_env) == "1";
-    if (mode != "timed" && !trajectory_only && !ip_only && !olsen_only) {
-        std::cerr << "The optional mode must be timed, trajectory-only, ip-only, or olsen-only\n";
+    if (mode != "timed" && !trajectory_only && !ip_only && !olsen_only && !raw_only) {
+        std::cerr << "The optional mode must be timed, trajectory-only, raw-only, ip-only, or olsen-only\n";
         return 1;
     }
     const double z_threshold = argc >= 8 ? std::stod(argv[7]) : 1e-3;
@@ -99,7 +100,7 @@ int run_benchmark(int argc, char **argv)
         return 1;
     }
     const bool automatic_reference = reference_argument == "auto";
-    if ((ip_only || olsen_only) && automatic_reference) {
+    if ((raw_only || ip_only || olsen_only) && automatic_reference) {
         std::cerr << "ip-only and olsen-only modes require a supplied reference energy\n";
         return 1;
     }
@@ -229,6 +230,31 @@ int run_benchmark(int argc, char **argv)
 
     if (mode == "timed")
         run(false, false, std::min<size_t>(iterations, 200), z_threshold, "warmup");
+
+    if (raw_only) {
+        auto trajectory = run(false, false, iterations, z_threshold, "raw");
+        redirect.restore();
+        Option records = Option::array();
+        const auto &result = trajectory.first;
+        for (size_t i = 0; i < result.energy_history.size(); ++i) {
+            const double energy = result.energy_history[i];
+            records.push_back({{"iteration", std::min((i + 1) * std::min(interval, iterations), result.iterations)},
+                               {"variational_energy", energy},
+                               {"raw_signed_error", energy - reference},
+                               {"raw_error", std::abs(energy - reference)},
+                               {"wall_seconds", result.time_history.at(i)},
+                               {"stored_determinants", result.x_size_history.at(i)},
+                               {"stored_wavefunction_entries", result.z_size_history.at(i)},
+                               {"hamiltonian_columns", result.hamiltonian_columns_history.at(i)}});
+        }
+        Option output = {{"benchmark_mode", mode}, {"fcidump", argv[1]},
+                         {"reference_energy", reference}, {"options", opt},
+                         {"trajectory_run", trajectory.second}, {"trajectory", records}};
+        std::ofstream file(argv[5]);
+        file << output.dump(2) << '\n';
+        if (!file) return 2;
+        return 0;
+    }
 
     // Single-mode runs do not repeat the raw or other correction trajectories.
     if (ip_only || olsen_only) {

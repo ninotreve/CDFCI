@@ -166,6 +166,12 @@ if(BUILD_TESTING)
     if(CDFCI_BUILD_EXPERIMENTS)
         find_package(Python3 QUIET COMPONENTS Interpreter)
         if(Python3_Interpreter_FOUND)
+            add_test(NAME cdfci.h2o_batch_paths
+                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test/test_h2o_batch_paths.py")
+            add_test(NAME cdfci.h2o_experiment
+                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test/test_h2o_experiment.py")
+            add_test(NAME cdfci.h2o_single_run
+                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test/test_h2o_single_run.py")
             foreach(benchmark_target cdfci_energy_correction_benchmark cdfci_energy_correction_benchmark_omp)
                 if(TARGET ${benchmark_target})
                     add_test(

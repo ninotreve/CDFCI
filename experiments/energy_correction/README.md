@@ -1,5 +1,11 @@
 # Energy-correction paper experiments
 
+For the revised H2O/cc-pVDZ experiment on bigMem3, see
+[README_h2o.md](README_h2o.md): one fixed 5,000,000-block IP+Olsen solve,
+three energy estimates on the same wavefunction, frozen inputs/binary and
+certified historical reference, and recoverable intermediate JSONL analysis.
+There are no calibration solves, standalone baselines or timing repetitions.
+
 Completed C2/N2 runs, figures, timing ablations, and paper-ready findings are
 indexed in [RESULTS.md](RESULTS.md), including limitations of the "almost free"
 claim. The latest parallel-Olsen three-way results are documented in

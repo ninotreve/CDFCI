@@ -39,6 +39,20 @@ def check_errors(row, reference):
 
 with tempfile.TemporaryDirectory(prefix="cdfci-benchmark-test-") as directory:
     root = Path(directory)
+    for reference in ('0', '-100'):
+        output = root / ('raw-only-' + reference + '.json')
+        subprocess.run(command(output, 'raw-only', reference), env=environment,
+                       stdout=subprocess.DEVNULL, check=True, timeout=15)
+        data = json.loads(output.read_text())
+        assert not data['options']['energy_correction']['enabled']
+        assert data['trajectory_run']['correction_evaluations'] == 0
+        assert [r['iteration'] for r in data['trajectory']] == [5, 10, 11]
+        streamed = [r for r in events(output) if r['record_type'] == 'report']
+        for a, b in zip(data['trajectory'], streamed):
+            assert a['variational_energy'] == b['variational_energy']
+            assert a['wall_seconds'] == b['wall_seconds']
+            assert a['stored_determinants'] == b['stored_determinants']
+            assert a['raw_signed_error'] == a['variational_energy'] - float(reference)
     for mode in ("olsen-only", "ip-only", "trajectory-only", "timed"):
         for reference in ("0", "-100"):
             output = root / (mode + reference + ".json")
