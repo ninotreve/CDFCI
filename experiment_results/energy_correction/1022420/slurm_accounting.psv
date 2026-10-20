@@ -1,0 +1,8 @@
+JobID|JobName|Partition|State|ExitCode|Elapsed|MaxRSS|NodeList
+1022420|cdfci_n2_deferred_three_way|partition|COMPLETED|0:0|13:27:06||bigMem5
+1022420.batch|batch||COMPLETED|0:0|13:27:06|20672K|bigMem5
+1022420.extern|extern||COMPLETED|0:0|13:27:06|0|bigMem5
+1022420.0|cdfci_energy_correction_benchmark_omp||COMPLETED|0:0|08:39:59|46324756K|bigMem5
+1022420.1|cdfci_energy_correction_benchmark_omp||COMPLETED|0:0|04:47:01|35778000K|bigMem5
+1022420.2|python3||COMPLETED|0:0|00:00:04|20760K|bigMem5
+1022420.3|python3||COMPLETED|0:0|00:00:01|360K|bigMem5

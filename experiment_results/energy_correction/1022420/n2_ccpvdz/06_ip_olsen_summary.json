@@ -1,0 +1,41 @@
+{
+  "ip_seconds": 17213.390454941,
+  "ip_olsen_seconds": 16874.447870256,
+  "olsen_extra_wall_seconds": -338.942584684999,
+  "olsen_relative_overhead": -0.019690634774842255,
+  "overhead_definition": "(IP+Olsen total seconds - IP total seconds) / IP total seconds",
+  "ip_report_seconds": 0.07084122999999998,
+  "ip_olsen_report_seconds": 665.6015070110002,
+  "report_timer_difference_seconds": 665.5306657810002,
+  "trajectory_points": 260,
+  "max_variational_energy_difference_hartree": 1.966715501566796e-08,
+  "target_tolerances": [
+    {
+      "tolerance_hartree": 0.0001,
+      "ip_iteration": 10000,
+      "ip_olsen_iteration": 10000,
+      "ip_seconds": 72.906785429,
+      "ip_olsen_seconds": 69.733935631,
+      "wall_time_speedup": 1.0454993651124076
+    },
+    {
+      "tolerance_hartree": 1e-05,
+      "ip_iteration": 60000,
+      "ip_olsen_iteration": 20000,
+      "ip_seconds": 415.029539883,
+      "ip_olsen_seconds": 136.373811866,
+      "wall_time_speedup": 3.0433228653225974
+    },
+    {
+      "tolerance_hartree": 1e-06,
+      "ip_iteration": 400000,
+      "ip_olsen_iteration": 130000,
+      "ip_seconds": 2675.123934524,
+      "ip_olsen_seconds": 829.165766214,
+      "wall_time_speedup": 3.2262836256961136
+    }
+  ],
+  "timing_note": "One run per variant; cross-job differences also include node load and OpenMP variation. Report timers exclude per-update cache maintenance.",
+  "ip_input": "/home/yjzhang/codes/cdfci/perturbation/CDFCI/experiment_results/energy_correction/1022420/n2_ccpvdz/05_ip_only.json",
+  "ip_olsen_input": "/home/yjzhang/codes/cdfci/perturbation/CDFCI/experiment_results/energy_correction/1022420/n2_ccpvdz/05_large_scale_with_timings.json"
+}

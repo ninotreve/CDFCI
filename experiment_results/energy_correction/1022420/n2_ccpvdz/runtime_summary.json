@@ -1,0 +1,35 @@
+{
+  "runs": [
+    {
+      "mode": "raw",
+      "solver_seconds": 14285.064035353,
+      "variational_energy": -109.28217239413189,
+      "correction_seconds": 0.0,
+      "correction_evaluations": 0,
+      "internal_b_refreshes": 0,
+      "peak_pending_internal_rows": 0
+    },
+    {
+      "mode": "ip",
+      "solver_seconds": 17213.390454941,
+      "variational_energy": -109.28217239412112,
+      "correction_seconds": 0.07084122999999998,
+      "correction_evaluations": 260,
+      "internal_b_refreshes": 0,
+      "peak_pending_internal_rows": 0
+    },
+    {
+      "mode": "ip+olsen",
+      "solver_seconds": 16874.447870256,
+      "variational_energy": -109.28217239414369,
+      "correction_seconds": 665.6015070110002,
+      "correction_evaluations": 260,
+      "internal_b_refreshes": 18927222678,
+      "peak_pending_internal_rows": 133259530
+    }
+  ],
+  "ip_overhead_vs_raw": 0.20499218010790243,
+  "olsen_overhead_vs_ip": -0.01969063477484223,
+  "total_overhead_vs_raw": 0.1812651191828567,
+  "timing_note": "Same allocation, one solve per variant; report I/O included. Fixed order raw, IP+Olsen, IP."
+}

@@ -1,0 +1,73 @@
+{
+  "analysis_mode": "same-allocation-complete-prefix-from-json-and-stdout",
+  "source_job": "1022419",
+  "node": "bigMem5",
+  "original_job_state": "TIMEOUT",
+  "original_requested_iterations": 3600000,
+  "analysis_iterations": 3000000,
+  "trajectory_points": 300,
+  "reference_energy": -75.7319603747,
+  "plot_resolution_floor_hartree": 1e-07,
+  "wall_seconds_at_prefix_report": {
+    "raw": 21106.515270219,
+    "ip": 16713.14,
+    "joint": 17260.662524161
+  },
+  "olsen_overhead_vs_ip": 0.03276000345602337,
+  "joint_report_seconds": 629.8229563379998,
+  "ip_report_seconds": null,
+  "timing_note": "All three trajectories are from job 1022419 on bigMem5; use their same-iteration report clocks, not full-process solve timers. One measurement per mode; fixed order and shared-node load remain confounders.",
+  "log_precision": {
+    "energy_decimal_places": 10,
+    "wall_seconds_decimal_places": 2,
+    "energy_rounding_half_unit_hartree": 5e-11,
+    "wall_time_rounding_half_unit_seconds": 0.005
+  },
+  "data_note": "IP-only recovered from flushed stdout, not a completed solver JSON. Missing IP report timers and refresh counters remain unknown. Raw energies/times and joint energies/times come from original full-precision JSON; raw determinant counts come from stdout.",
+  "target_tolerances": [
+    {
+      "tolerance_hartree": 0.0001,
+      "raw_iteration": 40000,
+      "raw_seconds": 342.625886126,
+      "ip_iteration": 10000,
+      "ip_seconds": 64.46,
+      "joint_iteration": 10000,
+      "joint_seconds": 73.163188621,
+      "raw_to_joint_speedup": 4.683036545890186,
+      "ip_to_joint_speedup": 0.8810441591592697
+    },
+    {
+      "tolerance_hartree": 1e-05,
+      "raw_iteration": 190000,
+      "raw_seconds": 1585.223042869,
+      "ip_iteration": 50000,
+      "ip_seconds": 315.66,
+      "joint_iteration": 30000,
+      "joint_seconds": 201.839261933,
+      "raw_to_joint_speedup": 7.853888424320589,
+      "ip_to_joint_speedup": 1.5639177282801526
+    },
+    {
+      "tolerance_hartree": 1e-06,
+      "raw_iteration": 730000,
+      "raw_seconds": 5753.213746027,
+      "ip_iteration": 220000,
+      "ip_seconds": 1349.51,
+      "joint_iteration": 110000,
+      "joint_seconds": 706.206817488,
+      "raw_to_joint_speedup": 8.146641470400079,
+      "ip_to_joint_speedup": 1.9109274600325297
+    }
+  ],
+  "source_sha256": {
+    "/home/yjzhang/codes/cdfci/perturbation/CDFCI/experiment_results/energy_correction/1022419/c2_ccpvdz/prefix_3000000/source_paired_prefix.json": "901dda1efcd6740467b9ff155c2f5dad814bf6abb5b5df422def1b6e6702dec2",
+    "/home/yjzhang/codes/cdfci/perturbation/CDFCI/experiment_results/energy_correction/1022419/c2_ccpvdz/prefix_3000000/source_stdout_prefix.out": "8d99603916d451bf7f8f22b62bea4bcd842de2709d2d4edc0ff6685c4d02c84d"
+  },
+  "source_export": {
+    "analysis_iterations": 3000000,
+    "original_requested_iterations": 3600000,
+    "original_paired_sha256": "4a81a0b91817a4e7b9353eae4e3385ec40327f9e9bc18236fb158e9934a3dc21",
+    "original_stdout_sha256": "b5fb93342bf208d9de432e43749726bb369371fdc6b00cd5ad029b901f167aeb",
+    "note": "Selected prefix only. Original requested iterations and stdout section markers are preserved as provenance; full-solve summaries and later reports are deliberately omitted."
+  }
+}
