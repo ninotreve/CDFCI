@@ -29,7 +29,7 @@ _cdfci*.so
 !cdfci_three_way_1022420.out
 !/experiment_results/energy_correction/1022419/c2_ccpvdz/prefix_3000000/source_stdout_prefix.out
 
-# Publish six historical runs plus selected C2 3M / N2 2.6M datasets.
+# Publish six historical runs, selected C2/N2 datasets and completed H2O only.
 /experiment_results/*
 !/experiment_results/energy_correction/
 /experiment_results/energy_correction/*
@@ -41,4 +41,9 @@ _cdfci*.so
 !/experiment_results/energy_correction/1007784/
 !/experiment_results/energy_correction/1022419/
 !/experiment_results/energy_correction/1022420/
+!/experiment_results/energy_correction/h2o_ccpvdz/
+/experiment_results/energy_correction/h2o_ccpvdz/*
+!/experiment_results/energy_correction/h2o_ccpvdz/1027249/
+!/experiment_results/energy_correction/h2o_ccpvdz/1027249/reference/h2o_ccpvdz_new.out
+!/cdfci_h2o_5m_1027249.out
 *.log

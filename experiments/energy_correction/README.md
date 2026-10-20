@@ -5,6 +5,9 @@ For the revised H2O/cc-pVDZ experiment on bigMem3, see
 three energy estimates on the same wavefunction, frozen inputs/binary and
 certified historical reference, and recoverable intermediate JSONL analysis.
 There are no calibration solves, standalone baselines or timing repetitions.
+The completed 5M-block results, numerical findings and interpretation limits
+are in [RESULTS_H2O.md](RESULTS_H2O.md). For the retained-dataset inventory and
+removal of failed/cancelled outputs, see [RESULTS_INVENTORY.md](RESULTS_INVENTORY.md).
 
 The latest deferred-refresh datasets are **C2 3,000,000 steps** (same-node
 prefix from job `1022419`) and **N2 2,600,000 steps** (complete job `1022420`).

@@ -172,6 +172,10 @@ if(BUILD_TESTING)
                 COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test/test_h2o_experiment.py")
             add_test(NAME cdfci.h2o_single_run
                 COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test/test_h2o_single_run.py")
+            if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/experiment_results/energy_correction/h2o_ccpvdz/1027249/completion.json")
+                add_test(NAME cdfci.h2o_published_results
+                    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test/test_h2o_published_results.py")
+            endif()
             foreach(benchmark_target cdfci_energy_correction_benchmark cdfci_energy_correction_benchmark_omp)
                 if(TARGET ${benchmark_target})
                     add_test(

@@ -1,3 +1,7 @@
 *.sh text eol=lf
 *.slurm text eol=lf
 *.csv text eol=lf
+
+# Preserve original experiment logs byte-for-byte, including printed spaces.
+/cdfci_h2o_5m_1027249.out -text -whitespace
+/experiment_results/energy_correction/h2o_ccpvdz/1027249/reference/h2o_ccpvdz_new.out -text -whitespace

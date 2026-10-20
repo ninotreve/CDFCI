@@ -1,0 +1,8 @@
+{
+  "iterations": 5000000,
+  "number_of_solves": 1,
+  "calibration_solves": 0,
+  "warmup_solves": 0,
+  "timing_pairs": 0,
+  "automatic_iteration_reduction": false
+}

@@ -5,6 +5,10 @@
 固定 5,000,000 个 block，每 block 64 coordinates，每 10,000 步报告。
 不做校准、额外预热、独立 raw/IP 求解、性能对照或重复配对；不按预算缩短步数。
 
+任务 **1027249 已完成**，500 万步 / 500 个报告点。结果与论文表述边界见
+[RESULTS_H2O.md](RESULTS_H2O.md)，保留/清理清单见
+[RESULTS_INVENTORY.md](RESULTS_INVENTORY.md)。
+
 ## 参数和输出
 
 - partition / bigMem3，64 OpenMP 线程、128G、18 小时，非独占，spread/cores。
@@ -31,15 +35,14 @@
 固定 500 万步是目标，不承诺在 18 小时内一定完成。如果达到作业时限，Slurm 提前
 10 分钟发 USR1，驱动器终止自己的 srun 进程组并保留部分曲线和日志，不冒充完整结果。
 
-## 本次提交：由用户执行
+## 重跑：已有本地冻结快照时
 
 已准备的单次实验快照路径为 `build_h2o_experiment/frozen-h2o-single-20261019`。
-旧任务 1027222 是九次求解的性能对照方案，应先取消；其已有日志和结果继续保留。
-Codex 没有确认旧任务取消，也不代用户提交新任务。
+原任务 1027222 已取消，其不完整结果和重复分析已移出仓库，不作为论文证据。
+以下命令会提交一个新任务，不是本次结果的重分析；不要复用已有输出目录。
 
 ```bash
 cd /home/yjzhang/codes/cdfci/perturbation/CDFCI
-scancel 1027222
 env -u CDFCI_FROZEN_RUN -u CDFCI_EXPERIMENT_OUTPUT \
   sbatch experiments/energy_correction/run_h2o_ccpvdz.sbatch
 ```
@@ -54,7 +57,7 @@ env -u CDFCI_FROZEN_RUN -u CDFCI_EXPERIMENT_OUTPUT \
 ```bash
 python3 experiments/energy_correction/h2o_single_run.py prepare \
   --root "$PWD" --frozen FROZEN --eigen build_h2o_experiment/_deps/eigen-src \
-  --reference-file /home/yjzhang/codes/cdfci/paper-jctc/h2o_ccpvdz/h2o_ccpvdz_new.out
+  --reference-file experiment_results/energy_correction/h2o_ccpvdz/1027249/reference/h2o_ccpvdz_new.out
 cmake -S FROZEN/src -B FROZEN/build -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTING=ON -DCDFCI_BUILD_EXPERIMENTS=ON -DCDFCI_ENABLE_OPENMP=ON \
   -DFETCHCONTENT_SOURCE_DIR_EIGEN="$PWD/FROZEN/eigen"
@@ -67,11 +70,15 @@ sbatch --export=ALL,CDFCI_FROZEN_RUN="$PWD/FROZEN" \
   experiments/energy_correction/run_h2o_ccpvdz.sbatch
 ```
 
-可在结束、运行中或中断后重新生成分析：
+可在结束、运行中或中断后重新生成分析。拉取仓库后只需要 Python、NumPy、
+Matplotlib，不需要冻结快照、Slurm、二进制或 FCIDUMP。为了不覆盖正式结果，
+建议先复制到忽略的目录再分析：
 
 ```bash
-python3 build_h2o_experiment/frozen-h2o-single-20261019/src/experiments/energy_correction/h2o_single_run.py \
-  analyze --output experiment_results/energy_correction/h2o_ccpvdz/新作业号
+cp -a experiment_results/energy_correction/h2o_ccpvdz/1027249 \
+  experiment_results/energy_correction/reanalysis_h2o
+python3 experiments/energy_correction/h2o_single_run.py \
+  analyze --output experiment_results/energy_correction/reanalysis_h2o
 ```
 
 旧驱动 `h2o_experiment.py` 保留用于旧任务的恢复与分析，当前 sbatch 不再调用其九次求解流程。

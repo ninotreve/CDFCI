@@ -1,0 +1,22 @@
+{
+  "argv": [
+    "srun",
+    "--ntasks=1",
+    "--cpus-per-task=64",
+    "--cpu-bind=verbose,cores",
+    "/home/yjzhang/codes/cdfci/perturbation/CDFCI/build_h2o_experiment/frozen-h2o-single-20261019/build/bin/cdfci_energy_correction_benchmark_omp",
+    "/home/yjzhang/codes/cdfci/perturbation/CDFCI/build_h2o_experiment/frozen-h2o-single-20261019/src/data/h2o_ccpvdz_psi4.FCIDUMP",
+    "5000000",
+    "10000",
+    "-76.2418600697",
+    "/home/yjzhang/codes/cdfci/perturbation/CDFCI/experiment_results/energy_correction/h2o_ccpvdz/1027249/runs/joint.json",
+    "olsen-only",
+    "0.0",
+    "848256040",
+    "64",
+    "1",
+    "0",
+    "0.0",
+    "0"
+  ]
+}

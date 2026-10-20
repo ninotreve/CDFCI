@@ -1,0 +1,49 @@
+{
+  "experiment": "single_joint",
+  "planned_iterations": 5000000,
+  "last_iteration": 5000000,
+  "reports": 500,
+  "complete": true,
+  "reference_policy": {
+    "reference_energy": -76.2418600697,
+    "source": "/home/yjzhang/codes/cdfci/perturbation/CDFCI/build_h2o_experiment/frozen-h2o-single-20261019/src/reference/h2o_ccpvdz_new.out",
+    "sha256": "a67420d891f4aeb6a9a7953c471d0d6242831fe3ea0804724ef305e1e150667d",
+    "original_path": "/home/yjzhang/codes/cdfci/paper-jctc/h2o_ccpvdz/h2o_ccpvdz_new.out",
+    "certification_provenance": "User confirms the historical reference is strictly certified.",
+    "rounding_half_unit_hartree": 5e-11,
+    "note": "No arbitrary 1e-7 exclusion region. Plot symlog linear scale uses printing resolution; it is not a total-energy certification bound."
+  },
+  "latest": {
+    "iteration": 5000000,
+    "wall_seconds_joint": 30053.097429415,
+    "nonzero_coefficients": 260459958,
+    "stored_wavefunction_entries": 451681060,
+    "hamiltonian_columns": 319999937,
+    "external_correction": -2.884976138847774e-12,
+    "olsen_correction": -2.924563890925931e-12,
+    "direct_report_seconds": 4.978014032,
+    "variational_energy": -76.2418600696593,
+    "variational_signed_error": 4.069988790433854e-11,
+    "ip_energy": -76.24186006966218,
+    "ip_signed_error": 3.781508439715253e-11,
+    "ip_olsen_energy": -76.24186006966511,
+    "ip_olsen_signed_error": 3.488764832582092e-11
+  },
+  "below_reference_reports": {
+    "variational": 0,
+    "ip": 0,
+    "ip_olsen": 0
+  },
+  "solve_summary": {
+    "coefficient_bytes_per_entry": 24,
+    "correction_evaluations": 500,
+    "correction_seconds": 1254.4592259809986,
+    "energy": -76.2418600696593,
+    "internal_b_refreshes": 68138290053,
+    "iterations": 5000000,
+    "peak_pending_internal_rows": 258618189,
+    "seconds": 30066.52569707,
+    "stored_determinants": 451681060
+  },
+  "note": "All three estimates use the same wavefunction and joint-run clock. No standalone method runtimes or performance comparisons. First recorded hits are sampled, not interpolated crossings."
+}
